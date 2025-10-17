@@ -744,6 +744,33 @@ def main():
             
             # Debug info
             with st.expander("🔧 Debug Info", expanded=False):
+                # Try to get API key from Streamlit secrets first
+                api_key = None
+                api_source = "manual"
+                
+                # Multiple ways to check for secrets
+                secrets_available = False
+                api_key_in_secrets = False
+                
+                try:
+                    if hasattr(st, 'secrets'):
+                        secrets_available = True
+                        # Try different access methods
+                        if hasattr(st.secrets, 'CLAUDE_API_KEY'):
+                            api_key = st.secrets.CLAUDE_API_KEY
+                            api_key_in_secrets = True
+                            api_source = "secrets"
+                        elif 'CLAUDE_API_KEY' in st.secrets:
+                            api_key = st.secrets['CLAUDE_API_KEY']
+                            api_key_in_secrets = True
+                            api_source = "secrets"
+                        elif hasattr(st.secrets, 'claude_api_key'):
+                            api_key = st.secrets.claude_api_key
+                            api_key_in_secrets = True
+                            api_source = "secrets"
+                except Exception as e:
+                    st.warning(f"Error accessing secrets: {e}")
+                
                 debug_info = {
                     "Secrets available": secrets_available,
                     "CLAUDE_API_KEY in secrets": api_key_in_secrets,
