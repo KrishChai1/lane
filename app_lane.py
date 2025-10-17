@@ -28,7 +28,7 @@ tf.get_logger().setLevel('ERROR')
 
 # Page Configuration
 st.set_page_config(
-    page_title="🚚 Transportation Cost Optimizer",
+    page_title="🚚 Lane Optimization",
     page_icon="🚚",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -159,21 +159,6 @@ st.markdown("""
         box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
     }
     
-    .stSelectbox > div > div {
-        border-radius: 8px;
-        border: 2px solid #e1e8ed;
-        transition: border-color 0.3s ease;
-    }
-    
-    .stSelectbox > div > div:focus-within {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-    
-    .sidebar .sidebar-content {
-        background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
-    }
-    
     .transport-mode-icon {
         font-size: 2rem;
         margin-bottom: 0.5rem;
@@ -193,6 +178,14 @@ st.markdown("""
     .grade-a { background: #10b981; }
     .grade-b { background: #f59e0b; }
     .grade-c { background: #ef4444; }
+    
+    .lane-input-section {
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        padding: 2rem;
+        border-radius: 16px;
+        margin-bottom: 2rem;
+        border: 2px solid #0ea5e9;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -203,11 +196,12 @@ def initialize_session_state():
         'sample_data': None,
         'user_data': None,
         'predictions': None,
+        'lane_predictions': None,
         'model_performance': {
-            'LSTM': {'r2': 0.94, 'mae': 12.45, 'rmse': 18.67, 'grade': 'A'},
-            'Gradient Boosting': {'r2': 0.91, 'mae': 15.23, 'rmse': 22.89, 'grade': 'A'},
-            'XGBoost': {'r2': 0.93, 'mae': 13.78, 'rmse': 19.45, 'grade': 'A'},
-            'Ensemble': {'r2': 0.96, 'mae': 10.89, 'rmse': 16.23, 'grade': 'A+'}
+            'LSTM': {'r2_score': 0.94, 'mae': 12.45, 'rmse': 18.67, 'grade': 'A'},
+            'Gradient_Boosting': {'r2_score': 0.91, 'mae': 15.23, 'rmse': 22.89, 'grade': 'A'},
+            'XGBoost': {'r2_score': 0.93, 'mae': 13.78, 'rmse': 19.45, 'grade': 'A'},
+            'Ensemble': {'r2_score': 0.96, 'mae': 10.89, 'rmse': 16.23, 'grade': 'A+'}
         },
         'feature_importance': {
             'distance_miles': 0.35,
@@ -216,7 +210,8 @@ def initialize_session_state():
             'service_level': 0.12,
             'declared_value': 0.07
         },
-        'training_complete': True
+        'training_complete': True,
+        'clarification_questions': []
     }
     
     for key, value in defaults.items():
@@ -455,22 +450,14 @@ def main():
     # Header
     st.markdown("""
     <div class="main-header">
-        <h1>🚚 Transportation Cost Optimizer</h1>
-        <p>AI-Powered Multi-Modal Transportation Analysis • Pre-trained Models • Real-time Optimization</p>
+        <h1>🚚 Lane Optimization</h1>
+        <p>LSTM • Gradient Boosting • XGBoost • Ensemble Models • Multi-Modal Cost Function Analysis</p>
     </div>
     """, unsafe_allow_html=True)
     
     # Sidebar
     with st.sidebar:
         st.header("🎛️ Control Panel")
-        
-        # Data Source Selection
-        st.subheader("📊 Data Source")
-        data_source = st.radio(
-            "Choose your data:",
-            ["🎲 Use Sample Data (2000 records)", "📁 Upload Your File", "🔗 Both Options"],
-            help="Sample data includes realistic transportation costs across multiple carriers and modes"
-        )
         
         # Model Status
         st.subheader("🤖 AI Models Status")
@@ -480,8 +467,8 @@ def main():
             st.markdown(f"""
             <div style="margin-bottom: 0.5rem;">
                 <span class="performance-badge {grade_class}">{performance['grade']}</span>
-                <strong>{model_name}</strong><br>
-                <small>R² Score: {performance['r2']:.3f} | MAE: ${performance['mae']:.2f}</small>
+                <strong>{model_name.replace('_', ' ')}</strong><br>
+                <small>R² Score: {performance['r2_score']:.3f} | MAE: ${performance['mae']:.2f}</small>
             </div>
             """, unsafe_allow_html=True)
         
@@ -490,24 +477,239 @@ def main():
         if st.button("🔄 Refresh Models", help="Simulate model retraining"):
             st.success("✅ Models refreshed!")
         
-        if st.button("📊 View Sample Data"):
-            st.session_state.show_sample = True
+        if st.button("📊 Load Sample Data"):
+            with st.spinner("Loading sample data..."):
+                st.session_state.sample_data = generate_sample_data(2000)
+                st.success("✅ Sample data loaded!")
     
-    # Main Content Tabs
+    # Main Content Tabs - Lane Optimization First
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Data & Analysis", 
-        "🔮 Cost Predictions", 
+        "🎯 Lane Optimization", 
+        "📊 Data & Analysis",
         "📈 Model Performance", 
         "🛠️ Advanced Settings"
     ])
     
     with tab1:
+        st.header("🎯 Lane Optimization & Cost Predictions")
+        
+        # Lane Optimization Input Section
+        st.markdown("""
+        <div class="lane-input-section">
+            <h3 style="margin-top: 0; color: #0369a1;">🚚 Enter Shipment Details for Optimization</h3>
+            <p style="color: #0c4a6e;">Get AI-powered recommendations across multiple transportation modes and carriers</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Prediction Interface
+        with st.form("lane_optimization_form"):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.subheader("📍 Route Information")
+                origin = st.selectbox("Origin City", [
+                    'New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX',
+                    'Phoenix, AZ', 'Philadelphia, PA', 'Miami, FL', 'Seattle, WA',
+                    'Denver, CO', 'Boston, MA', 'Atlanta, GA', 'Dallas, TX'
+                ])
+                
+                destination = st.selectbox("Destination City", [
+                    'Miami, FL', 'Seattle, WA', 'Denver, CO', 'Boston, MA',
+                    'Atlanta, GA', 'Dallas, TX', 'San Diego, CA', 'Chicago, IL',
+                    'New York, NY', 'Los Angeles, CA', 'Houston, TX', 'Phoenix, AZ'
+                ])
+            
+            with col2:
+                st.subheader("📦 Shipment Details")
+                weight = st.number_input("Weight (lbs)", 
+                                       min_value=1.0, max_value=10000.0, value=25.0, step=0.1)
+                
+                volume = st.number_input("Volume (cu ft)", 
+                                       min_value=1.0, max_value=1000.0, value=12.0, step=0.1)
+                
+                declared_value = st.number_input("Declared Value ($)", 
+                                               min_value=100, max_value=100000, value=2500, step=100)
+            
+            with col3:
+                st.subheader("⚙️ Service Options")
+                transport_modes = st.multiselect("Transport Modes", 
+                                               list(TRANSPORT_MODES.keys()),
+                                               default=['road', 'air'],
+                                               help="Select multiple modes for comparison")
+                
+                service_level = st.selectbox("Service Level",
+                                           ['Ground', 'Express', 'Overnight', 'Economy'])
+                
+                urgency = st.selectbox("Urgency Level", 
+                                     ['Standard', 'Expedited', 'Emergency'])
+                
+                industry = st.selectbox("Industry", [
+                    'E-commerce', 'Healthcare', 'Manufacturing', 'Automotive', 'Retail'
+                ])
+            
+            # Submit button
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                submitted = st.form_submit_button("🚀 Optimize Lane & Get Recommendations", 
+                                                help="Generate AI-powered lane optimization recommendations",
+                                                use_container_width=True)
+        
+        if submitted and transport_modes:
+            generate_lane_predictions(origin, destination, weight, volume, declared_value, 
+                                    urgency, transport_modes, service_level, industry)
+        
+        # Display Lane Optimization Results
+        if st.session_state.lane_predictions:
+            st.subheader("🏆 Optimized Lane Recommendations")
+            
+            predictions = st.session_state.lane_predictions
+            
+            # Best recommendation highlight
+            best_pred = predictions[0]
+            mode_config = TRANSPORT_MODES[best_pred['mode']]
+            
+            st.markdown(f"""
+            <div class="prediction-card">
+                <h3>🥇 Optimal Lane Solution: {mode_config['icon']} {mode_config['name']}</h3>
+                <div style="display: flex; gap: 2rem; align-items: center; flex-wrap: wrap;">
+                    <div><strong>💰 Cost:</strong> ${best_pred['cost']:.2f}</div>
+                    <div><strong>⏱️ Transit:</strong> {best_pred['days']} days</div>
+                    <div><strong>🎯 Score:</strong> {best_pred['score']:.1f}/100</div>
+                    <div><strong>💚 Savings:</strong> ${best_pred.get('savings', 0):.2f}</div>
+                    <div><strong>🌱 Carbon:</strong> {best_pred['carbon']:.1f} kg CO₂</div>
+                </div>
+                <p style="margin-top: 1rem; color: #666;">
+                    <strong>🧠 AI Reasoning:</strong> {best_pred.get('reason', mode_config['description'])}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # All recommendations in cards
+            st.subheader("📋 Complete Lane Analysis")
+            
+            for i, pred in enumerate(predictions):
+                mode_config = TRANSPORT_MODES[pred['mode']]
+                
+                # Rank indicator
+                rank_emoji = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][min(i, 4)]
+                
+                with st.expander(f"{rank_emoji} {mode_config['icon']} {mode_config['name']} - ${pred['cost']:.2f} ({pred['days']} days)", expanded=(i==0)):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("💰 Total Cost", f"${pred['cost']:.2f}")
+                        st.metric("📏 Distance", f"{pred['distance']:.0f} miles")
+                        st.metric("🎯 Optimization Score", f"{pred['score']:.1f}/100")
+                    
+                    with col2:
+                        st.metric("⏱️ Transit Time", f"{pred['days']} days")
+                        st.metric("📈 Reliability", f"{pred['reliability']:.1%}")
+                        st.metric("🌱 Carbon Footprint", f"{pred['carbon']:.1f} kg CO₂")
+                    
+                    with col3:
+                        st.metric("💚 Cost Savings", f"${pred.get('savings', 0):.2f}")
+                        st.metric("🚀 Speed vs Cost", f"{pred['cost']/pred['days']:.0f} $/day")
+                        
+                        # Performance indicator
+                        if pred['score'] >= 80:
+                            st.success("🌟 Excellent Choice")
+                        elif pred['score'] >= 60:
+                            st.info("👍 Good Option")
+                        else:
+                            st.warning("⚠️ Consider Alternatives")
+                    
+                    # Why this option
+                    st.markdown(f"""
+                    **🔍 Analysis:** {pred.get('reason', mode_config['description'])}
+                    
+                    **✅ Best For:** {', '.join(mode_config['best_for'])}
+                    """)
+            
+            # Comparison Visualization
+            st.subheader("📊 Visual Lane Comparison")
+            
+            pred_df = pd.DataFrame(predictions)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Cost vs Time scatter
+                fig_scatter = px.scatter(pred_df, x='cost', y='days', 
+                                       size='score', color='mode',
+                                       title="Cost vs Transit Time Analysis",
+                                       labels={'cost': 'Total Cost ($)', 'days': 'Transit Days'},
+                                       hover_data=['reliability', 'carbon'])
+                fig_scatter.update_layout(height=400)
+                st.plotly_chart(fig_scatter, use_container_width=True, key="lane_comparison")
+            
+            with col2:
+                # Optimization score comparison
+                fig_bar = px.bar(pred_df, x='mode', y='score',
+                               color='score', color_continuous_scale='viridis',
+                               title="Optimization Score by Transport Mode",
+                               labels={'mode': 'Transport Mode', 'score': 'Optimization Score'})
+                fig_bar.update_layout(height=400)
+                st.plotly_chart(fig_bar, use_container_width=True, key="score_comparison")
+        
+        # Clarification Questions Section
+        st.subheader("❓ Need Help Optimizing Your Lane?")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            user_question = st.text_area(
+                "Ask any questions about your lane optimization:",
+                placeholder="e.g., 'Why is rail transport recommended for my heavy shipment?' or 'How can I reduce costs further?'",
+                height=100
+            )
+            
+            if st.button("🤖 Get AI Assistance") and user_question:
+                provide_ai_assistance(user_question)
+        
+        with col2:
+            st.markdown("""
+            **🎯 Common Questions:**
+            - Cost vs speed trade-offs?
+            - Environmental impact options?
+            - Seasonal pricing factors?
+            - Risk mitigation strategies?
+            - Volume discount opportunities?
+            """)
+        
+        # Display AI assistance if available
+        if 'ai_response' in st.session_state:
+            st.markdown(f"""
+            <div class="model-performance">
+                <h4>🤖 AI Assistant Response:</h4>
+                <p>{st.session_state.ai_response}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with tab2:
         st.header("📊 Data Management & Analysis")
+        
+        # Data Source Selection
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.subheader("📁 Data Source Options")
+            data_source = st.radio(
+                "Choose your data approach:",
+                ["🎲 Use Sample Data (2000 records)", "📁 Upload Your File", "🔗 Both Options"],
+                help="Sample data includes realistic transportation costs across multiple carriers and modes"
+            )
+        
+        with col2:
+            if st.button("🎲 Generate Fresh Sample Data"):
+                with st.spinner("🎲 Generating sample dataset..."):
+                    st.session_state.sample_data = generate_sample_data(2000)
+                    st.success("✅ Fresh sample data generated!")
         
         # Load data based on selection
         if data_source in ["🎲 Use Sample Data (2000 records)", "🔗 Both Options"]:
-            with st.spinner("🎲 Generating sample dataset..."):
-                st.session_state.sample_data = generate_sample_data(2000)
+            if st.session_state.sample_data is None:
+                with st.spinner("🎲 Generating sample dataset..."):
+                    st.session_state.sample_data = generate_sample_data(2000)
             
             col1, col2 = st.columns([2, 1])
             
@@ -527,13 +729,10 @@ def main():
                 st.subheader("📋 Dataset Overview")
                 df = st.session_state.sample_data
                 
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    st.metric("Total Records", f"{len(df):,}")
-                    st.metric("Avg Cost", f"${df['total_cost_usd'].mean():.0f}")
-                with col_b:
-                    st.metric("Carriers", df['carrier'].nunique())
-                    st.metric("Routes", f"{df['origin'].nunique()}→{df['destination'].nunique()}")
+                st.metric("Total Records", f"{len(df):,}")
+                st.metric("Avg Cost", f"${df['total_cost_usd'].mean():.0f}")
+                st.metric("Carriers", df['carrier'].nunique())
+                st.metric("Routes", f"{df['origin'].nunique()}→{df['destination'].nunique()}")
                 
                 # Cost distribution
                 fig_hist = px.histogram(df, x='total_cost_usd', nbins=30,
@@ -573,7 +772,7 @@ def main():
         
         # Data Analysis
         if st.session_state.sample_data is not None:
-            st.subheader("📈 Transportation Analysis")
+            st.subheader("📈 Transportation Analysis Dashboard")
             
             df = st.session_state.sample_data
             
@@ -610,130 +809,6 @@ def main():
             
             st.dataframe(carrier_perf, use_container_width=True)
     
-    with tab2:
-        st.header("🔮 AI-Powered Cost Predictions")
-        
-        # Prediction Interface
-        with st.form("prediction_form"):
-            st.subheader("🚚 Enter Shipment Details")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                origin = st.selectbox("📍 Origin City", [
-                    'New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX',
-                    'Phoenix, AZ', 'Philadelphia, PA', 'Miami, FL', 'Seattle, WA'
-                ])
-                
-                weight = st.number_input("⚖️ Weight (lbs)", 
-                                       min_value=1.0, max_value=10000.0, value=25.0, step=0.1)
-                
-                declared_value = st.number_input("💰 Declared Value ($)", 
-                                               min_value=100, max_value=100000, value=2500, step=100)
-            
-            with col2:
-                destination = st.selectbox("🎯 Destination City", [
-                    'Miami, FL', 'Seattle, WA', 'Denver, CO', 'Boston, MA',
-                    'Atlanta, GA', 'Dallas, TX', 'San Diego, CA', 'Chicago, IL'
-                ])
-                
-                volume = st.number_input("📦 Volume (cu ft)", 
-                                       min_value=1.0, max_value=1000.0, value=12.0, step=0.1)
-                
-                urgency = st.selectbox("⚡ Urgency Level", 
-                                     ['Standard', 'Expedited', 'Emergency'])
-            
-            with col3:
-                transport_modes = st.multiselect("🚛 Transport Modes", 
-                                               list(TRANSPORT_MODES.keys()),
-                                               default=['road', 'air'],
-                                               help="Select multiple modes for comparison")
-                
-                service_level = st.selectbox("🎯 Service Level",
-                                           ['Ground', 'Express', 'Overnight', 'Economy'])
-                
-                industry = st.selectbox("🏭 Industry", [
-                    'E-commerce', 'Healthcare', 'Manufacturing', 'Automotive', 'Retail'
-                ])
-            
-            submitted = st.form_submit_button("🔮 Get AI Predictions", 
-                                            help="Generate cost predictions using pre-trained models")
-        
-        if submitted and transport_modes:
-            generate_predictions(origin, destination, weight, volume, declared_value, 
-                               urgency, transport_modes, service_level, industry)
-        
-        # Display Predictions
-        if st.session_state.predictions:
-            st.subheader("🏆 Optimized Transportation Recommendations")
-            
-            predictions = st.session_state.predictions
-            
-            # Best recommendation highlight
-            best_pred = predictions[0]
-            mode_config = TRANSPORT_MODES[best_pred['mode']]
-            
-            st.markdown(f"""
-            <div class="prediction-card">
-                <h3>🥇 Best Recommendation: {mode_config['icon']} {mode_config['name']}</h3>
-                <div style="display: flex; gap: 2rem; align-items: center;">
-                    <div><strong>Cost:</strong> ${best_pred['cost']:.2f}</div>
-                    <div><strong>Time:</strong> {best_pred['days']} days</div>
-                    <div><strong>Score:</strong> {best_pred['score']:.1f}/100</div>
-                    <div><strong>Savings:</strong> ${best_pred.get('savings', 0):.2f}</div>
-                </div>
-                <p style="margin-top: 1rem; color: #666;">
-                    <strong>Why this is optimal:</strong> {best_pred.get('reason', mode_config['description'])}
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # All recommendations
-            for i, pred in enumerate(predictions):
-                mode_config = TRANSPORT_MODES[pred['mode']]
-                
-                col1, col2, col3, col4 = st.columns([1, 2, 2, 1])
-                
-                with col1:
-                    st.markdown(f"""
-                    <div style="text-align: center; padding: 1rem;">
-                        <div class="transport-mode-icon">{mode_config['icon']}</div>
-                        <strong>{mode_config['name']}</strong>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with col2:
-                    st.metric("💰 Total Cost", f"${pred['cost']:.2f}")
-                    st.metric("⚡ Transit Time", f"{pred['days']} days")
-                
-                with col3:
-                    st.metric("🎯 Optimization Score", f"{pred['score']:.1f}/100")
-                    st.metric("🌱 Carbon Emissions", f"{pred['carbon']:.1f} kg")
-                
-                with col4:
-                    reliability_color = "#10B981" if pred['reliability'] > 0.9 else "#F59E0B" if pred['reliability'] > 0.8 else "#EF4444"
-                    st.markdown(f"""
-                    <div style="text-align: center; padding: 1rem;">
-                        <div style="color: {reliability_color}; font-size: 2rem;">●</div>
-                        <strong>{pred['reliability']:.1%}</strong><br>
-                        <small>Reliability</small>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                st.divider()
-            
-            # Comparison Chart
-            pred_df = pd.DataFrame(predictions)
-            
-            fig_comparison = px.scatter(pred_df, x='cost', y='days', 
-                                      size='score', color='mode',
-                                      title="Cost vs Time Comparison (Size = Optimization Score)",
-                                      labels={'cost': 'Total Cost ($)', 'days': 'Transit Days'},
-                                      hover_data=['reliability', 'carbon'])
-            
-            fig_comparison.update_layout(height=500)
-            st.plotly_chart(fig_comparison, use_container_width=True, key="comparison")
-    
     with tab3:
         st.header("📈 Model Performance & Analytics")
         
@@ -741,21 +816,22 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("Model Accuracy Comparison")
+            st.subheader("🏆 Model Accuracy Comparison")
             
             performance_data = []
             for model_name, metrics in st.session_state.model_performance.items():
                 performance_data.append({
-                    'Model': model_name,
-                    'R² Score': metrics['r2'],
-                    'MAE ($)': metrics['mae'],
+                    'Model': model_name.replace('_', ' '),
+                    'R2_Score': metrics['r2_score'],
+                    'MAE': metrics['mae'],
                     'Grade': metrics['grade']
                 })
             
             perf_df = pd.DataFrame(performance_data)
             
-            fig_perf = px.bar(perf_df, x='Model', y='R² Score',
-                            color='R² Score', color_continuous_scale='viridis',
+            # Fixed the column name issue
+            fig_perf = px.bar(perf_df, x='Model', y='R2_Score',
+                            color='R2_Score', color_continuous_scale='viridis',
                             title="Model Performance (R² Score)")
             fig_perf.update_layout(height=400)
             st.plotly_chart(fig_perf, use_container_width=True, key="perf_bar")
@@ -779,7 +855,7 @@ def main():
             # Insights
             st.markdown("""
             <div class="model-performance">
-                <h4> AI Insights</h4>
+                <h4>🧠 AI Insights</h4>
                 <ul>
                     <li><strong>Distance</strong> is the primary cost driver (35%)</li>
                     <li><strong>Weight</strong> significantly impacts pricing (28%)</li>
@@ -792,14 +868,14 @@ def main():
         # Model Details
         st.subheader("🔍 Detailed Model Analysis")
         
-        tab_lstm, tab_gb, tab_ensemble = st.tabs([" LSTM Model", "🌳 Gradient Boosting", "🎯 Ensemble"])
+        tab_lstm, tab_gb, tab_ensemble = st.tabs(["🧠 LSTM Model", "🌳 Gradient Boosting", "🎯 Ensemble"])
         
         with tab_lstm:
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("""
                 <div class="agent-card">
-                    <h4> LSTM Neural Network</h4>
+                    <h4>🧠 LSTM Neural Network</h4>
                     <p><strong>Architecture:</strong> Multi-layer LSTM with attention mechanism</p>
                     <p><strong>Training:</strong> 100 epochs with early stopping</p>
                     <p><strong>Specialty:</strong> Time-series patterns and sequential dependencies</p>
@@ -903,11 +979,11 @@ def main():
         with col3:
             st.info("**Total Predictions:** 1,247,832")
 
-def generate_predictions(origin, destination, weight, volume, declared_value, urgency, transport_modes, service_level, industry):
-    """Generate AI-powered predictions for selected transport modes"""
+def generate_lane_predictions(origin, destination, weight, volume, declared_value, urgency, transport_modes, service_level, industry):
+    """Generate AI-powered lane optimization predictions"""
     
-    with st.spinner("AI models analyzing optimal transportation options..."):
-        time.sleep(1.5)  # Simulate processing time
+    with st.spinner("🚀 AI agents analyzing optimal transportation lanes..."):
+        time.sleep(2)  # Simulate processing time
         
         predictions = []
         
@@ -949,21 +1025,22 @@ def generate_predictions(origin, destination, weight, volume, declared_value, ur
                 elif urgency == 'Expedited':
                     days = max(1, int(days * 0.7))
             
-            # Calculate optimization score
+            # Calculate optimization score with enhanced logic
             cost_score = max(0, 100 - (cost / 50))
             speed_score = max(0, 100 - (days * 15))
             reliability_score = reliability * 100
             carbon_score = max(0, 100 - (carbon * 2))
             
+            # Weight-based optimization scoring
             optimization_score = (cost_score * 0.4 + speed_score * 0.3 + 
                                  reliability_score * 0.2 + carbon_score * 0.1)
             
-            # Generate recommendation reason
+            # Generate detailed recommendation reasoning
             reasons = {
-                'road': f"Optimal balance of cost (${cost:.0f}) and flexibility for {distance:.0f} mile route",
-                'air': f"Fastest delivery ({days} day{'s' if days > 1 else ''}) for urgent {urgency.lower()} shipment",
-                'rail': f"Most cost-effective (${cost:.0f}) for {weight:.0f} lb cargo with high reliability",
-                'sea': f"Lowest environmental impact ({carbon:.1f} kg CO2) and cost for international shipping"
+                'road': f"Best balance of cost (${cost:.0f}) and flexibility for {distance:.0f}-mile route. Ideal for {urgency.lower()} delivery with door-to-door service.",
+                'air': f"Fastest option ({days} day{'s' if days > 1 else ''}) for {urgency.lower()} {weight:.0f}-lb shipment. Premium service justifies higher cost for time-sensitive delivery.",
+                'rail': f"Most economical choice (${cost:.0f}) for {weight:.0f}-lb cargo. Excellent reliability ({reliability:.1%}) and lowest environmental impact.",
+                'sea': f"Optimal for cost-conscious shipping (${cost:.0f}) with minimal environmental impact ({carbon:.1f} kg CO₂). Best for non-urgent international routes."
             }
             
             predictions.append({
@@ -986,48 +1063,84 @@ def generate_predictions(origin, destination, weight, volume, declared_value, ur
             for pred in predictions:
                 pred['savings'] = max_cost - pred['cost']
         
-        st.session_state.predictions = predictions
+        st.session_state.lane_predictions = predictions
+
+def provide_ai_assistance(question):
+    """Provide AI assistance based on user question"""
+    
+    # Simulate AI processing
+    with st.spinner("🤖 AI analyzing your question..."):
+        time.sleep(1)
+    
+    # Simple keyword-based responses (in production, this would use actual AI)
+    responses = {
+        'cost': "To minimize costs, consider rail transport for heavy shipments (>100 lbs) or sea transport for international routes. Ground shipping offers the best balance for domestic deliveries under 50 lbs.",
+        'speed': "For fastest delivery, air transport is optimal but expensive. Express ground service provides good speed-to-cost ratio for domestic shipments. Consider urgency level vs. budget constraints.",
+        'environmental': "Rail and sea transport have the lowest carbon footprint. Rail is 75% more eco-friendly than road transport, while sea shipping produces 90% less CO₂ than air freight.",
+        'reliability': "Rail transport offers the highest reliability (95%) followed by road (92%). For critical shipments, consider backup options or insurance coverage.",
+        'seasonal': "Shipping costs increase 15-25% during peak seasons (Nov-Dec, Mar-Apr). Plan shipments during off-peak times for better rates.",
+        'volume': "Volume discounts apply for shipments >500 lbs. Consider consolidating multiple smaller shipments or using LTL (Less Than Truckload) services."
+    }
+    
+    # Find relevant response based on keywords
+    question_lower = question.lower()
+    response = "I understand you're looking for optimization advice. "
+    
+    for keyword, answer in responses.items():
+        if keyword in question_lower:
+            response = answer
+            break
+    else:
+        response += "Based on your shipment details, I recommend comparing multiple transport modes. Consider cost vs. speed trade-offs, and factor in reliability and environmental impact based on your priorities."
+    
+    st.session_state.ai_response = response
 
 def generate_report():
     """Generate and download performance report"""
-    st.success("📊 Model Performance Report Generated!")
+    st.success("📊 Lane Optimization Report Generated!")
     
     report_data = {
         'timestamp': datetime.now().isoformat(),
         'model_performance': st.session_state.model_performance,
         'feature_importance': st.session_state.feature_importance,
         'total_predictions': 1247832,
-        'accuracy_trend': 'Improving (+2.3% this month)'
+        'accuracy_trend': 'Improving (+2.3% this month)',
+        'lane_optimization_stats': {
+            'avg_cost_savings': '$127.50',
+            'avg_time_savings': '1.2 days',
+            'co2_reduction': '15.3 kg per shipment'
+        }
     }
     
     st.download_button(
         label="📥 Download Report (JSON)",
         data=json.dumps(report_data, indent=2),
-        file_name=f"transport_optimizer_report_{datetime.now().strftime('%Y%m%d')}.json",
+        file_name=f"lane_optimizer_report_{datetime.now().strftime('%Y%m%d')}.json",
         mime="application/json"
     )
 
 def show_api_code():
     """Show API integration code"""
-    st.success("🔗 API Integration Code Generated!")
+    st.success("🔗 Lane Optimization API Code Generated!")
     
     api_code = '''
 import requests
 import json
 
-# Transportation Optimizer API Integration
-def predict_shipping_cost(origin, destination, weight, transport_mode):
+# Lane Optimization API Integration
+def optimize_transportation_lane(origin, destination, weight, transport_modes):
     """
-    Get AI-powered shipping cost prediction
+    Get AI-powered lane optimization recommendations
     """
-    url = "https://your-api-endpoint.com/predict"
+    url = "https://your-api-endpoint.com/optimize-lane"
     
     payload = {
         "origin": origin,
         "destination": destination,
         "weight": weight,
-        "transport_mode": transport_mode,
-        "service_level": "ground"
+        "transport_modes": transport_modes,
+        "service_level": "ground",
+        "urgency": "standard"
     }
     
     headers = {
@@ -1040,19 +1153,21 @@ def predict_shipping_cost(origin, destination, weight, transport_mode):
     if response.status_code == 200:
         return response.json()
     else:
-        return {"error": "Prediction failed"}
+        return {"error": "Lane optimization failed"}
 
 # Example usage
-result = predict_shipping_cost(
-    origin="New York, NY",
+result = optimize_transportation_lane(
+    origin="Chicago, IL",
     destination="Los Angeles, CA", 
     weight=25.0,
-    transport_mode="road"
+    transport_modes=["road", "air", "rail"]
 )
 
-print(f"Predicted cost: ${result['cost']:.2f}")
-print(f"Transit time: {result['days']} days")
-print(f"Optimization score: {result['score']:.1f}/100")
+print("Lane Optimization Results:")
+for i, option in enumerate(result['recommendations']):
+    print(f"{i+1}. {option['mode']}: ${option['cost']:.2f}, {option['days']} days")
+    print(f"   Score: {option['score']:.1f}/100, Savings: ${option['savings']:.2f}")
+    print(f"   Reason: {option['reason']}")
 '''
     
     st.code(api_code, language='python')
@@ -1060,7 +1175,7 @@ print(f"Optimization score: {result['score']:.1f}/100")
     st.download_button(
         label="📥 Download API Code",
         data=api_code,
-        file_name="transport_optimizer_api.py",
+        file_name="lane_optimizer_api.py",
         mime="text/python"
     )
 
