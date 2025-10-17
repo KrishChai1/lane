@@ -247,7 +247,102 @@ def validate_claude_api(api_key):
     except Exception as e:
         return False, f"Unexpected error: {str(e)}"
 
-# Enhanced ML Agent with better error handling and validation
+# Dataset processing functions
+def process_uploaded_data(uploaded_file):
+    """Process uploaded dataset and return training data"""
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(uploaded_file)
+        else:
+            return None, "Unsupported file format. Please upload CSV or Excel files."
+        
+        # Display dataset info
+        st.write(f"📊 **Dataset loaded**: {len(df)} rows, {len(df.columns)} columns")
+        st.write("**Columns found:**", list(df.columns))
+        
+        # Show preview
+        st.write("**Data Preview:**")
+        st.dataframe(df.head(), use_container_width=True)
+        
+        return df, None
+    except Exception as e:
+        return None, f"Error processing file: {str(e)}"
+
+def prepare_training_data(df, target_column, feature_columns=None):
+    """Prepare training data from uploaded dataset"""
+    try:
+        if target_column not in df.columns:
+            return None, None, f"Target column '{target_column}' not found in dataset"
+        
+        # Auto-select feature columns if not specified
+        if feature_columns is None:
+            # Exclude target and non-numeric columns
+            feature_columns = [col for col in df.columns 
+                             if col != target_column and 
+                             (df[col].dtype in ['int64', 'float64'] or 
+                              df[col].dtype == 'object' and df[col].nunique() < 20)]
+        
+        # Prepare features
+        X = df[feature_columns].copy()
+        y = df[target_column].copy()
+        
+        # Handle categorical variables
+        categorical_columns = X.select_dtypes(include=['object']).columns
+        label_encoders = {}
+        
+        for col in categorical_columns:
+            le = LabelEncoder()
+            X[col] = le.fit_transform(X[col].astype(str))
+            label_encoders[col] = le
+        
+        # Handle missing values
+        X = X.fillna(X.mean() if X.select_dtypes(include=[np.number]).shape[1] > 0 else 0)
+        y = y.fillna(y.mean() if y.dtype in ['int64', 'float64'] else 0)
+        
+        return X.values, y.values, None
+        
+    except Exception as e:
+        return None, None, f"Error preparing training data: {str(e)}"
+
+def validate_dataset_format(df):
+    """Validate if dataset has required columns for shipping optimization"""
+    required_columns = ['origin', 'destination', 'weight', 'cost']
+    optional_columns = ['priority', 'distance', 'transit_time', 'carrier']
+    
+    found_required = [col for col in required_columns if col.lower() in [c.lower() for c in df.columns]]
+    found_optional = [col for col in optional_columns if col.lower() in [c.lower() for c in df.columns]]
+    
+    return {
+        'valid': len(found_required) >= 3,  # At least 3 required columns
+        'required_found': found_required,
+        'optional_found': found_optional,
+        'suggestions': get_column_suggestions(df.columns)
+    }
+
+def get_column_suggestions(columns):
+    """Suggest column mappings based on column names"""
+    suggestions = {}
+    column_mapping = {
+        'cost': ['cost', 'price', 'amount', 'total', 'charge', 'fee'],
+        'weight': ['weight', 'wt', 'mass', 'kg', 'lbs', 'pounds'],
+        'distance': ['distance', 'dist', 'miles', 'km', 'length'],
+        'origin': ['origin', 'from', 'source', 'start', 'pickup'],
+        'destination': ['destination', 'dest', 'to', 'end', 'delivery'],
+        'priority': ['priority', 'urgent', 'level', 'class', 'type'],
+        'transit_time': ['time', 'duration', 'days', 'hours', 'transit']
+    }
+    
+    for target, keywords in column_mapping.items():
+        for col in columns:
+            if any(keyword in col.lower() for keyword in keywords):
+                suggestions[target] = col
+                break
+    
+    return suggestions
+
+# Enhanced ML Agent with custom data support
 class AdvancedMLAgent:
     def __init__(self, name, model_type):
         self.name = name
@@ -650,10 +745,12 @@ def main():
             # Debug info
             with st.expander("🔧 Debug Info", expanded=False):
                 debug_info = {
-                    "Secrets available": hasattr(st, 'secrets'),
-                    "CLAUDE_API_KEY in secrets": hasattr(st, 'secrets') and 'CLAUDE_API_KEY' in st.secrets,
+                    "Secrets available": secrets_available,
+                    "CLAUDE_API_KEY in secrets": api_key_in_secrets,
                     "API validated": st.session_state.api_validated,
-                    "Anthropic available": ANTHROPIC_AVAILABLE
+                    "Anthropic available": ANTHROPIC_AVAILABLE,
+                    "API key source": api_source,
+                    "Secrets keys": list(st.secrets.keys()) if secrets_available else "No secrets accessible"
                 }
                 for key, value in debug_info.items():
                     st.code(f"{key}: {value}")
@@ -662,10 +759,33 @@ def main():
             api_key = None
             api_source = "manual"
             
-            if hasattr(st, 'secrets') and 'CLAUDE_API_KEY' in st.secrets:
-                api_key = st.secrets.CLAUDE_API_KEY
-                api_source = "secrets"
+            # Multiple ways to check for secrets
+            secrets_available = False
+            api_key_in_secrets = False
+            
+            try:
+                if hasattr(st, 'secrets'):
+                    secrets_available = True
+                    # Try different access methods
+                    if hasattr(st.secrets, 'CLAUDE_API_KEY'):
+                        api_key = st.secrets.CLAUDE_API_KEY
+                        api_key_in_secrets = True
+                        api_source = "secrets"
+                    elif 'CLAUDE_API_KEY' in st.secrets:
+                        api_key = st.secrets['CLAUDE_API_KEY']
+                        api_key_in_secrets = True
+                        api_source = "secrets"
+                    elif hasattr(st.secrets, 'claude_api_key'):
+                        api_key = st.secrets.claude_api_key
+                        api_key_in_secrets = True
+                        api_source = "secrets"
+            except Exception as e:
+                st.warning(f"Error accessing secrets: {e}")
+            
+            if api_key_in_secrets:
                 st.success(f"✅ Found API key in Streamlit secrets (length: {len(api_key) if api_key else 0})")
+            else:
+                st.info("💡 No API key found in secrets. Please add to secrets.toml or enter manually below.")
             
             # Manual input (will override secrets if provided)
             manual_key = st.text_input(
@@ -717,21 +837,33 @@ def main():
                 1. **Check API Key Format**: Should start with `sk-ant-`
                 2. **Verify API Key**: Get a new one from [Claude Console](https://console.anthropic.com)
                 3. **Streamlit Secrets Setup**:
+                   Create `.streamlit/secrets.toml` in your project root:
                    ```toml
-                   # .streamlit/secrets.toml
                    CLAUDE_API_KEY = "sk-ant-your-key-here"
                    ```
-                4. **Restart Streamlit**: After adding secrets, restart your app
-                5. **Check Network**: Ensure you can reach api.anthropic.com
+                   **Important**: No quotes around the key name, quotes around the value
+                4. **Restart Streamlit**: After adding secrets, restart your app completely
+                5. **Check File Location**: Ensure `.streamlit/secrets.toml` is in the same directory as your Python file
+                6. **Check Network**: Ensure you can reach api.anthropic.com
+                
+                ### 📝 Secrets File Format Example:
+                ```toml
+                # .streamlit/secrets.toml
+                CLAUDE_API_KEY = "sk-ant-api03-your-actual-key-here"
+                
+                # You can also try lowercase
+                claude_api_key = "sk-ant-api03-your-actual-key-here"
+                ```
                 """)
                 
                 st.info("""
-                💡 **To use Streamlit secrets for Claude API:**
+                💡 **Quick Setup Guide:**
                 
-                1. Create `.streamlit/secrets.toml` in your project root
-                2. Add: `CLAUDE_API_KEY = "your-api-key-here"`
-                3. Restart your Streamlit app
-                4. Or use the input field above for testing
+                1. Create folder `.streamlit` in your project directory
+                2. Create file `secrets.toml` inside `.streamlit` folder
+                3. Add your API key: `CLAUDE_API_KEY = "your-key"`
+                4. Restart Streamlit completely
+                5. Or just paste your key in the input field below for immediate testing
                 """)
         else:
             st.info("📦 Install anthropic library to enable Claude API: `pip install anthropic`")
@@ -934,13 +1066,131 @@ def main():
             )
             
             # Training data options
-            st.write("**Training Data:**")
-            use_sample_data = st.checkbox("Use sample synthetic data", value=True)
+            st.write("**📊 Training Data Options:**")
             
-            if not use_sample_data:
-                uploaded_file = st.file_uploader("Upload training data (CSV)", type="csv")
+            data_option = st.radio(
+                "Select data source:",
+                ["Use sample synthetic data", "Upload custom dataset"],
+                help="Choose between generated sample data or your own dataset"
+            )
+            
+            training_data = None
+            
+            if data_option == "Upload custom dataset":
+                uploaded_file = st.file_uploader(
+                    "Upload training data", 
+                    type=['csv', 'xlsx', 'xls'],
+                    help="Upload CSV or Excel file with shipping data"
+                )
+                
                 if uploaded_file:
-                    st.info("Custom data upload feature - would process uploaded CSV here")
+                    # Process uploaded file
+                    df, error = process_uploaded_data(uploaded_file)
+                    
+                    if error:
+                        st.error(f"❌ {error}")
+                    else:
+                        # Validate dataset format
+                        validation = validate_dataset_format(df)
+                        
+                        if validation['valid']:
+                            st.success("✅ Dataset format validated!")
+                            
+                            # Column mapping section
+                            st.write("**🔄 Column Mapping:**")
+                            
+                            # Auto-suggestions
+                            suggestions = validation['suggestions']
+                            
+                            col_map1, col_map2 = st.columns(2)
+                            
+                            with col_map1:
+                                target_column = st.selectbox(
+                                    "Target Column (Cost/Price):",
+                                    options=df.columns,
+                                    index=list(df.columns).index(suggestions.get('cost', df.columns[0])) if suggestions.get('cost') in df.columns else 0
+                                )
+                                
+                                weight_column = st.selectbox(
+                                    "Weight Column:",
+                                    options=[None] + list(df.columns),
+                                    index=list(df.columns).index(suggestions.get('weight', df.columns[0])) + 1 if suggestions.get('weight') in df.columns else 0
+                                )
+                            
+                            with col_map2:
+                                distance_column = st.selectbox(
+                                    "Distance Column (optional):",
+                                    options=[None] + list(df.columns),
+                                    index=list(df.columns).index(suggestions.get('distance', df.columns[0])) + 1 if suggestions.get('distance') in df.columns else 0
+                                )
+                                
+                                priority_column = st.selectbox(
+                                    "Priority Column (optional):",
+                                    options=[None] + list(df.columns),
+                                    index=list(df.columns).index(suggestions.get('priority', df.columns[0])) + 1 if suggestions.get('priority') in df.columns else 0
+                                )
+                            
+                            # Feature selection
+                            available_features = [col for col in df.columns if col != target_column]
+                            selected_features = st.multiselect(
+                                "Select Feature Columns:",
+                                options=available_features,
+                                default=[col for col in [weight_column, distance_column, priority_column] if col and col in available_features]
+                            )
+                            
+                            if selected_features:
+                                # Prepare training data
+                                X, y, prep_error = prepare_training_data(df, target_column, selected_features)
+                                
+                                if prep_error:
+                                    st.error(f"❌ {prep_error}")
+                                else:
+                                    training_data = (X, y)
+                                    st.success(f"✅ Training data prepared: {X.shape[0]} samples, {X.shape[1]} features")
+                                    
+                                    # Show statistics
+                                    col_stat1, col_stat2, col_stat3 = st.columns(3)
+                                    with col_stat1:
+                                        st.metric("Samples", X.shape[0])
+                                    with col_stat2:
+                                        st.metric("Features", X.shape[1])
+                                    with col_stat3:
+                                        st.metric("Target Range", f"${y.min():.0f} - ${y.max():.0f}")
+                            else:
+                                st.warning("Please select at least one feature column.")
+                        else:
+                            st.warning("⚠️ Dataset format may not be optimal for shipping optimization.")
+                            st.write("**Suggestions:**")
+                            st.write("- Ensure you have columns for: cost/price, weight, distance")
+                            st.write("- Optional columns: priority, origin, destination, transit_time")
+                            
+                            # Still allow manual column selection
+                            if st.checkbox("Proceed anyway with manual column selection"):
+                                target_column = st.selectbox("Select target column:", df.columns)
+                                feature_columns = st.multiselect("Select feature columns:", 
+                                                               [col for col in df.columns if col != target_column])
+                                
+                                if feature_columns:
+                                    X, y, prep_error = prepare_training_data(df, target_column, feature_columns)
+                                    if not prep_error:
+                                        training_data = (X, y)
+                                        st.success("✅ Custom training data prepared!")
+                else:
+                    st.info("📁 Please upload a CSV or Excel file to continue with custom data.")
+            else:
+                st.info("📊 Using synthetic sample data for training.")
+                
+                # Option to download sample data format
+                if st.button("📥 Download Sample Dataset Format"):
+                    sample_df = generate_sample_data()
+                    csv = sample_df.to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv,
+                        file_name="sample_shipping_data.csv",
+                        mime="text/csv"
+                    )
+                    st.success("✅ Sample dataset generated! Use this as a template for your own data.")
             
             # Train models
             if st.button("🚀 Train Selected Models", type="primary"):
@@ -957,7 +1207,12 @@ def main():
                     
                     # Train all agents
                     st.write("🔄 Training models...")
-                    training_results = mas.train_all_agents()
+                    if training_data:
+                        st.info(f"📊 Using custom dataset: {training_data[0].shape[0]} samples")
+                    else:
+                        st.info("📊 Using synthetic sample data")
+                    
+                    training_results = mas.train_all_agents(training_data)
                     
                     # Store trained models
                     st.session_state.trained_models = mas.agents
