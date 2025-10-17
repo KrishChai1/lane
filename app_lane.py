@@ -9,14 +9,6 @@ from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 from sklearn.neural_network import MLPRegressor
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping
-import xgboost as xgb
-import lightgbm as lgb
-import joblib
 import os
 import requests
 import json
@@ -25,10 +17,54 @@ import warnings
 import math
 import random
 from typing import Dict, List, Tuple
-import anthropic
-from geopy.distance import geodesic
-from geopy.geocoders import Nominatim
 import time
+
+# Optional imports with fallbacks
+try:
+    import tensorflow as tf
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization
+    from tensorflow.keras.optimizers import Adam
+    from tensorflow.keras.callbacks import EarlyStopping
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
+    st.warning("⚠️ TensorFlow not available. LSTM models will be disabled.")
+
+try:
+    import xgboost as xgb
+    XGBOOST_AVAILABLE = True
+except ImportError:
+    XGBOOST_AVAILABLE = False
+    st.warning("⚠️ XGBoost not available. XGBoost models will be disabled.")
+
+try:
+    import lightgbm as lgb
+    LIGHTGBM_AVAILABLE = True
+except ImportError:
+    LIGHTGBM_AVAILABLE = False
+    st.warning("⚠️ LightGBM not available. LightGBM models will be disabled.")
+
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+    st.warning("⚠️ Anthropic library not available. Claude API integration will be disabled.")
+
+try:
+    from geopy.distance import geodesic
+    from geopy.geocoders import Nominatim
+    GEOPY_AVAILABLE = True
+except ImportError:
+    GEOPY_AVAILABLE = False
+    st.info("ℹ️ Geopy not available. Using estimated distances.")
+
+try:
+    import joblib
+    JOBLIB_AVAILABLE = True
+except ImportError:
+    JOBLIB_AVAILABLE = False
 
 warnings.filterwarnings('ignore')
 
@@ -132,11 +168,17 @@ def init_session_state():
     if 'api_validated' not in st.session_state:
         st.session_state.api_validated = False
     if 'geocoder' not in st.session_state:
-        st.session_state.geocoder = Nominatim(user_agent="lane_optimizer")
+        if GEOPY_AVAILABLE:
+            st.session_state.geocoder = Nominatim(user_agent="lane_optimizer")
+        else:
+            st.session_state.geocoder = None
 
 # Claude API validation
 def validate_claude_api(api_key):
     """Validate Claude API key"""
+    if not ANTHROPIC_AVAILABLE:
+        return False, "Anthropic library not installed"
+    
     try:
         client = anthropic.Anthropic(api_key=api_key)
         # Test with a simple request
@@ -226,7 +268,7 @@ class AdvancedMLAgent:
             X_train_scaled = self.scaler.fit_transform(X_train)
             X_test_scaled = self.scaler.transform(X_test)
             
-            # Train model based on type
+            # Train model based on type with availability checks
             if self.model_type == 'random_forest':
                 self.model = RandomForestRegressor(
                     n_estimators=100, 
@@ -247,6 +289,9 @@ class AdvancedMLAgent:
                 self.model.fit(X_train_scaled, y_train)
                 
             elif self.model_type == 'xgboost':
+                if not XGBOOST_AVAILABLE:
+                    st.error("XGBoost not available. Please install: pip install xgboost")
+                    return False
                 self.model = xgb.XGBRegressor(
                     n_estimators=100, 
                     random_state=42, 
@@ -257,6 +302,9 @@ class AdvancedMLAgent:
                 self.model.fit(X_train_scaled, y_train)
                 
             elif self.model_type == 'lightgbm':
+                if not LIGHTGBM_AVAILABLE:
+                    st.error("LightGBM not available. Please install: pip install lightgbm")
+                    return False
                 self.model = lgb.LGBMRegressor(
                     n_estimators=100,
                     random_state=42,
@@ -279,6 +327,9 @@ class AdvancedMLAgent:
                 self.model.fit(X_train_scaled, y_train)
                 
             elif self.model_type == 'lstm':
+                if not TENSORFLOW_AVAILABLE:
+                    st.error("TensorFlow not available. Please install: pip install tensorflow")
+                    return False
                 self.model = self._build_lstm_model(X_train_scaled.shape[1])
                 
                 # Reshape for LSTM (samples, timesteps, features)
@@ -297,16 +348,20 @@ class AdvancedMLAgent:
                 )
                 
             elif self.model_type == 'ensemble':
-                # Create ensemble of best performing models
-                rf = RandomForestRegressor(n_estimators=50, random_state=42, max_depth=8)
-                gb = GradientBoostingRegressor(n_estimators=50, random_state=42, max_depth=6)
-                xgb_model = xgb.XGBRegressor(n_estimators=50, random_state=42, max_depth=6)
+                # Create ensemble of available models
+                models = [
+                    ('rf', RandomForestRegressor(n_estimators=50, random_state=42, max_depth=8)),
+                    ('gb', GradientBoostingRegressor(n_estimators=50, random_state=42, max_depth=6))
+                ]
                 
-                self.model = VotingRegressor([
-                    ('rf', rf),
-                    ('gb', gb),
-                    ('xgb', xgb_model)
-                ])
+                if XGBOOST_AVAILABLE:
+                    models.append(('xgb', xgb.XGBRegressor(n_estimators=50, random_state=42, max_depth=6)))
+                
+                if len(models) < 2:
+                    st.error("Not enough models available for ensemble. Please install XGBoost.")
+                    return False
+                
+                self.model = VotingRegressor(models)
                 self.model.fit(X_train_scaled, y_train)
             
             # Calculate predictions
@@ -333,6 +388,9 @@ class AdvancedMLAgent:
     
     def _build_lstm_model(self, input_features):
         """Enhanced LSTM architecture"""
+        if not TENSORFLOW_AVAILABLE:
+            raise ImportError("TensorFlow not available")
+            
         model = Sequential([
             LSTM(128, input_shape=(1, input_features), return_sequences=True),
             Dropout(0.3),
@@ -384,8 +442,8 @@ class AdvancedMLAgent:
 # Enhanced distance calculation
 def calculate_real_distance(origin_city, origin_state, dest_city, dest_state):
     """Calculate real distance using geocoding"""
-    try:
-        if st.session_state.geocoder:
+    if GEOPY_AVAILABLE and st.session_state.geocoder:
+        try:
             origin_location = st.session_state.geocoder.geocode(f"{origin_city}, {origin_state}")
             dest_location = st.session_state.geocoder.geocode(f"{dest_city}, {dest_state}")
             
@@ -394,8 +452,8 @@ def calculate_real_distance(origin_city, origin_state, dest_city, dest_state):
                 dest_coords = (dest_location.latitude, dest_location.longitude)
                 distance = geodesic(origin_coords, dest_coords).miles
                 return distance
-    except:
-        pass
+        except:
+            pass
     
     # Fallback to estimation
     if origin_state == dest_state:
@@ -624,22 +682,49 @@ def main():
         
         # Claude API Key input
         st.subheader("🤖 Claude API Setup")
-        api_key = st.text_input("Claude API Key", type="password", help="Enter your Claude API key")
-        
-        if api_key and not st.session_state.api_validated:
-            with st.spinner("Validating API key..."):
-                is_valid, result = validate_claude_api(api_key)
-                if is_valid:
-                    st.session_state.claude_client = result
-                    st.session_state.api_validated = True
-                    st.success("✅ API key validated successfully!")
-                else:
-                    st.error(f"❌ API validation failed: {result}")
-        
-        if st.session_state.api_validated:
-            st.markdown('<div class="api-status">🟢 Claude API Connected</div>', unsafe_allow_html=True)
+        if ANTHROPIC_AVAILABLE:
+            # Use session state to persist API key
+            if 'claude_api_key' not in st.session_state:
+                st.session_state.claude_api_key = ""
+            
+            api_key = st.text_input(
+                "Claude API Key", 
+                value=st.session_state.claude_api_key,
+                type="password", 
+                help="Enter your Claude API key",
+                key="api_key_input"
+            )
+            
+            # Update session state when key changes
+            if api_key != st.session_state.claude_api_key:
+                st.session_state.claude_api_key = api_key
+                st.session_state.api_validated = False  # Reset validation when key changes
+            
+            # Validate API key if provided and not already validated
+            if api_key and len(api_key) > 10 and not st.session_state.get('api_validated', False):
+                with st.spinner("Validating Claude API key..."):
+                    is_valid, result = validate_claude_api(api_key)
+                    if is_valid:
+                        st.session_state.claude_client = result
+                        st.session_state.api_validated = True
+                        st.session_state.claude_api_key = api_key  # Store validated key
+                        st.success("✅ API key validated successfully!")
+                        st.rerun()  # Refresh to show connected status
+                    else:
+                        st.session_state.api_validated = False
+                        st.error(f"❌ API validation failed: {result}")
+            
+            # Show connection status
+            if st.session_state.get('api_validated', False) and st.session_state.get('claude_api_key', ''):
+                st.markdown('<div class="api-status">🟢 Claude API Connected</div>', unsafe_allow_html=True)
+                st.info(f"Using API key: ...{st.session_state.claude_api_key[-8:]}")
+            else:
+                st.markdown('<div class="api-error">🔴 Claude API Not Connected</div>', unsafe_allow_html=True)
+                if api_key and len(api_key) < 10:
+                    st.warning("API key seems too short. Please check and re-enter.")
         else:
-            st.markdown('<div class="api-error">🔴 Claude API Not Connected</div>', unsafe_allow_html=True)
+            st.markdown('<div class="api-error">🔴 Anthropic library not installed</div>', unsafe_allow_html=True)
+            st.info("📦 Install anthropic library to enable Claude API: `pip install anthropic`")
         
         # Model training status
         st.subheader("📊 Model Status")
@@ -730,26 +815,34 @@ def main():
             
             # ML Model selection
             st.write("**🤖 AI Model Selection**")
-            available_models = list(st.session_state.trained_models.keys()) if st.session_state.trained_models else ['base_calculation']
             
-            if available_models and available_models != ['base_calculation']:
-                model_names = {
-                    'ensemble': '🏆 Ensemble (Best)',
-                    'lstm': '🧠 LSTM Neural Network',
-                    'xgboost': '⚡ XGBoost',
-                    'lightgbm': '💡 LightGBM',
-                    'gradient_boosting': '📈 Gradient Boosting',
-                    'random_forest': '🌳 Random Forest',
-                    'neural_network': '🔗 Neural Network',
-                    'base_calculation': '📊 Base Calculation'
-                }
-                
+            # Get available models based on installed libraries
+            available_models = []
+            if st.session_state.trained_models:
+                available_models = list(st.session_state.trained_models.keys())
+            
+            # Add base calculation as fallback
+            if not available_models:
+                available_models = ['base_calculation']
+            
+            model_names = {
+                'ensemble': '🏆 Ensemble (Best)',
+                'lstm': '🧠 LSTM Neural Network',
+                'xgboost': '⚡ XGBoost',
+                'lightgbm': '💡 LightGBM',
+                'gradient_boosting': '📈 Gradient Boosting',
+                'random_forest': '🌳 Random Forest',
+                'neural_network': '🔗 Neural Network',
+                'base_calculation': '📊 Base Calculation'
+            }
+            
+            if len(available_models) > 1 or available_models[0] != 'base_calculation':
                 selected_model = st.selectbox("ML Model", 
                                             options=available_models,
                                             format_func=lambda x: model_names.get(x, x.title()))
             else:
                 selected_model = 'base_calculation'
-                st.info("Train models first to use ML predictions")
+                st.info("📚 Train models first to use ML predictions")
             
             st.markdown('</div>', unsafe_allow_html=True)
             
@@ -1065,18 +1158,32 @@ def main():
                 # Test size
                 test_size = st.slider("📊 Test Set Size", min_value=0.1, max_value=0.5, value=0.2, step=0.05)
             
-            # Model selection
+            # Model selection with availability checks
             st.subheader("🤖 Select Models to Train")
             
             model_options = {
                 'random_forest': '🌳 Random Forest - Robust ensemble method',
                 'gradient_boosting': '📈 Gradient Boosting - Sequential improvement',
-                'xgboost': '⚡ XGBoost - Optimized gradient boosting',
-                'lightgbm': '💡 LightGBM - Fast gradient boosting',
-                'neural_network': '🔗 Neural Network - Multi-layer perceptron',
-                'lstm': '🧠 LSTM - Long Short-Term Memory network',
-                'ensemble': '🏆 Ensemble - Combines multiple models'
+                'neural_network': '🔗 Neural Network - Multi-layer perceptron'
             }
+            
+            # Add optional models based on availability
+            if XGBOOST_AVAILABLE:
+                model_options['xgboost'] = '⚡ XGBoost - Optimized gradient boosting'
+            
+            if LIGHTGBM_AVAILABLE:
+                model_options['lightgbm'] = '💡 LightGBM - Fast gradient boosting'
+            
+            if TENSORFLOW_AVAILABLE:
+                model_options['lstm'] = '🧠 LSTM - Long Short-Term Memory network'
+            
+            # Ensemble requires at least 2 base models
+            available_base_models = ['random_forest', 'gradient_boosting']
+            if XGBOOST_AVAILABLE:
+                available_base_models.append('xgboost')
+            
+            if len(available_base_models) >= 2:
+                model_options['ensemble'] = '🏆 Ensemble - Combines multiple models'
             
             selected_models = []
             
