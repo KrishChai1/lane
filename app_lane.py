@@ -29,7 +29,7 @@ warnings.filterwarnings('ignore')
 # Page config
 st.set_page_config(
     page_title="🚚 Intelligent Lane Optimization System",
-    page_icon="🚚",
+    page_icon="UPS",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -515,7 +515,7 @@ with st.sidebar:
     st.header("🎛️ System Configuration")
     
     # Claude API Configuration
-    st.subheader("🧠 Claude AI Integration")
+    st.subheader("  Claude AI Integration")
     claude_api_key = st.text_input(
         "Claude API Key (Optional)", 
         type="password",
@@ -667,7 +667,7 @@ with tab1:
     
     with col2:
         if st.session_state.data is not None:
-            st.subheader("🧠 Intelligent Analysis")
+            st.subheader("  Intelligent Analysis")
             
             if st.button("🔍 Analyze with Claude AI", type="primary"):
                 if claude_api_key:
@@ -1742,3 +1742,4 @@ elif health_percentage >= 60:
     st.sidebar.warning("⚠️ Some features not configured")
 else:
     st.sidebar.error("❌ System needs configuration")
+
