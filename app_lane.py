@@ -9,14 +9,11 @@ from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 from sklearn.neural_network import MLPRegressor
-import os
-import requests
-import json
-from datetime import datetime, timedelta
 import warnings
 import math
 import random
 from typing import Dict, List, Tuple
+from datetime import datetime, timedelta
 import time
 
 # Optional imports with fallbacks
@@ -26,31 +23,27 @@ try:
     from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization
     from tensorflow.keras.optimizers import Adam
     from tensorflow.keras.callbacks import EarlyStopping
-    TENSORFLOW_AVAILABLE = True
+    TF_AVAILABLE = True
 except ImportError:
-    TENSORFLOW_AVAILABLE = False
-    st.warning("⚠️ TensorFlow not available. LSTM models will be disabled.")
+    TF_AVAILABLE = False
 
 try:
     import xgboost as xgb
     XGBOOST_AVAILABLE = True
 except ImportError:
     XGBOOST_AVAILABLE = False
-    st.warning("⚠️ XGBoost not available. XGBoost models will be disabled.")
 
 try:
     import lightgbm as lgb
     LIGHTGBM_AVAILABLE = True
 except ImportError:
     LIGHTGBM_AVAILABLE = False
-    st.warning("⚠️ LightGBM not available. LightGBM models will be disabled.")
 
 try:
     import anthropic
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    st.warning("⚠️ Anthropic library not available. Claude API integration will be disabled.")
 
 try:
     from geopy.distance import geodesic
@@ -58,19 +51,12 @@ try:
     GEOPY_AVAILABLE = True
 except ImportError:
     GEOPY_AVAILABLE = False
-    st.info("ℹ️ Geopy not available. Using estimated distances.")
-
-try:
-    import joblib
-    JOBLIB_AVAILABLE = True
-except ImportError:
-    JOBLIB_AVAILABLE = False
 
 warnings.filterwarnings('ignore')
 
 # Page config
 st.set_page_config(
-    page_title="🚚 Advanced Lane Optimization System",
+    page_title="🚚 Advanced Lane Optimization System v14",
     page_icon="🚚",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -138,6 +124,15 @@ st.markdown("""
         border-left: 4px solid #dc3545;
         margin-bottom: 1rem;
     }
+    .claude-insights {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        color: white;
+        margin: 1rem 0;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        border-left: 4px solid #ffd700;
+    }
     .stTab {
         background-color: #f8f9fa;
     }
@@ -148,11 +143,21 @@ st.markdown("""
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         margin-bottom: 1rem;
     }
+    .debug-panel {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+        margin: 1rem 0;
+        font-family: monospace;
+        font-size: 0.9em;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Initialize session state
 def init_session_state():
+    """Initialize all session state variables"""
     if 'models' not in st.session_state:
         st.session_state.models = {}
     if 'data' not in st.session_state:
@@ -173,23 +178,74 @@ def init_session_state():
         else:
             st.session_state.geocoder = None
 
+# Claude API enhanced prediction
+def get_claude_insights(optimization_data, claude_client):
+    """Get Claude insights for optimization"""
+    try:
+        prompt = f"""
+        Analyze this shipping optimization data and provide insights:
+        
+        Route: {optimization_data['origin']} → {optimization_data['destination']}
+        Distance: {optimization_data['distance']:.1f} miles
+        Weight: {optimization_data['weight']} lbs
+        Priority: {optimization_data['priority']}
+        
+        ML Predictions:
+        - Estimated Cost: ${optimization_data.get('predicted_cost', 0):.2f}
+        - Transit Time: {optimization_data.get('predicted_time', 0):.1f} hours
+        - Reliability Score: {optimization_data.get('reliability', 0):.1f}%
+        
+        Provide specific recommendations for:
+        1. Cost optimization opportunities
+        2. Risk mitigation strategies
+        3. Alternative routing suggestions
+        
+        Keep response concise and actionable.
+        """
+        
+        response = claude_client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        return response.content[0].text
+    except Exception as e:
+        return f"Claude analysis unavailable: {str(e)}"
+
 # Claude API validation
 def validate_claude_api(api_key):
-    """Validate Claude API key"""
+    """Validate Claude API key with detailed error reporting"""
     if not ANTHROPIC_AVAILABLE:
-        return False, "Anthropic library not installed"
+        return False, "Anthropic library not installed. Run: pip install anthropic"
+    
+    if not api_key:
+        return False, "No API key provided"
+    
+    if not api_key.startswith('sk-ant-'):
+        return False, "Invalid API key format. Claude API keys should start with 'sk-ant-'"
     
     try:
         client = anthropic.Anthropic(api_key=api_key)
-        # Test with a simple request
+        # Test with a simple request using current model
         response = client.messages.create(
-            model="claude-3-sonnet-20240229",
+            model="claude-3-5-sonnet-20241022",
             max_tokens=10,
             messages=[{"role": "user", "content": "Test"}]
         )
         return True, client
+    except anthropic.AuthenticationError as e:
+        return False, f"Authentication failed: {str(e)}"
+    except anthropic.PermissionDeniedError as e:
+        return False, f"Permission denied: {str(e)}"
+    except anthropic.NotFoundError as e:
+        return False, f"Model not found: {str(e)}"
+    except anthropic.RateLimitError as e:
+        return False, f"Rate limit exceeded: {str(e)}"
+    except anthropic.APIConnectionError as e:
+        return False, f"Connection error: {str(e)}"
     except Exception as e:
-        return False, str(e)
+        return False, f"Unexpected error: {str(e)}"
 
 # Enhanced ML Agent with better error handling and validation
 class AdvancedMLAgent:
@@ -201,1647 +257,910 @@ class AdvancedMLAgent:
         self.label_encoders = {}
         self.performance_metrics = {}
         self.is_trained = False
-        self.feature_columns = None
+
+    def prepare_features(self, data):
+        """Enhanced feature engineering"""
+        features = []
+        feature_names = []
         
-    def prepare_features(self, data, is_training=True):
-        """Enhanced feature preparation with proper encoding"""
+        # Distance-based features
+        distance = data.get('distance', 100)
+        features.extend([
+            distance,
+            np.log1p(distance),
+            distance ** 0.5,
+            1 / (distance + 1)
+        ])
+        feature_names.extend(['distance', 'log_distance', 'sqrt_distance', 'inv_distance'])
+        
+        # Weight-based features
+        weight = data.get('weight', 1000)
+        features.extend([
+            weight,
+            np.log1p(weight),
+            weight / 1000,  # Normalized weight
+            weight * distance  # Weight-distance interaction
+        ])
+        feature_names.extend(['weight', 'log_weight', 'weight_norm', 'weight_distance'])
+        
+        # Priority encoding
+        priority_map = {'Low': 1, 'Medium': 2, 'High': 3, 'Critical': 4}
+        priority_score = priority_map.get(data.get('priority', 'Medium'), 2)
+        features.extend([priority_score, priority_score ** 2])
+        feature_names.extend(['priority_score', 'priority_squared'])
+        
+        # Time-based features
+        hour = data.get('hour', 12)
+        day = data.get('day', 3)  # Wednesday = 3
+        features.extend([
+            hour,
+            np.sin(2 * np.pi * hour / 24),
+            np.cos(2 * np.pi * hour / 24),
+            day,
+            1 if day < 5 else 0,  # Weekday flag
+        ])
+        feature_names.extend(['hour', 'hour_sin', 'hour_cos', 'day', 'is_weekday'])
+        
+        # Seasonal features
+        month = data.get('month', 6)
+        features.extend([
+            month,
+            np.sin(2 * np.pi * month / 12),
+            np.cos(2 * np.pi * month / 12)
+        ])
+        feature_names.extend(['month', 'month_sin', 'month_cos'])
+        
+        # Additional derived features
+        features.extend([
+            distance / (weight + 1),  # Distance per weight
+            weight / (distance + 1),  # Weight per distance
+            priority_score * distance,  # Priority-distance interaction
+            priority_score * weight,   # Priority-weight interaction
+        ])
+        feature_names.extend(['dist_per_weight', 'weight_per_dist', 'priority_dist', 'priority_weight'])
+        
+        return np.array(features).reshape(1, -1), feature_names
+
+    def train(self, training_data=None):
+        """Train the model with synthetic data if no training data provided"""
         try:
-            data_copy = data.copy()
-            
-            # Define feature columns
-            numeric_features = ['Package_Weight_lbs', 'Distance_miles', 'Package_Length_in', 
-                              'Package_Width_in', 'Package_Height_in', 'Declared_Value_USD']
-            categorical_features = ['Carrier', 'Service_Type', 'Origin_State', 'Destination_State']
-            
-            # Handle missing values
-            for col in numeric_features:
-                if col in data_copy.columns:
-                    data_copy[col] = pd.to_numeric(data_copy[col], errors='coerce').fillna(0)
-            
-            # Encode categorical variables
-            for col in categorical_features:
-                if col in data_copy.columns:
-                    if is_training:
-                        # Fit encoder during training
-                        if col not in self.label_encoders:
-                            self.label_encoders[col] = LabelEncoder()
-                        data_copy[f'{col}_encoded'] = self.label_encoders[col].fit_transform(data_copy[col].astype(str))
-                    else:
-                        # Transform using existing encoder
-                        if col in self.label_encoders:
-                            # Handle unseen categories
-                            known_categories = self.label_encoders[col].classes_
-                            data_copy[col] = data_copy[col].astype(str)
-                            data_copy[col] = data_copy[col].apply(
-                                lambda x: x if x in known_categories else known_categories[0]
-                            )
-                            data_copy[f'{col}_encoded'] = self.label_encoders[col].transform(data_copy[col])
-                        else:
-                            data_copy[f'{col}_encoded'] = 0
-            
-            # Create feature matrix
-            encoded_features = [f'{col}_encoded' for col in categorical_features if col in data_copy.columns]
-            available_numeric = [col for col in numeric_features if col in data_copy.columns]
-            
-            self.feature_columns = available_numeric + encoded_features
-            feature_matrix = data_copy[self.feature_columns].fillna(0)
-            
-            return feature_matrix
-            
-        except Exception as e:
-            st.error(f"Error in feature preparation for {self.name}: {str(e)}")
-            return pd.DataFrame()
-    
-    def train(self, X, y):
-        """Enhanced training with better error handling"""
-        try:
-            if X.empty or len(y) == 0:
-                st.error(f"Empty dataset for {self.name}")
-                return False
+            if training_data is None:
+                # Generate synthetic training data
+                np.random.seed(42)
+                n_samples = 1000
                 
-            # Split data
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42, shuffle=True
-            )
+                training_features = []
+                training_targets = []
+                
+                for _ in range(n_samples):
+                    # Generate random shipping scenario
+                    distance = np.random.exponential(500) + 50
+                    weight = np.random.exponential(2000) + 100
+                    priority = np.random.choice(['Low', 'Medium', 'High', 'Critical'])
+                    hour = np.random.randint(0, 24)
+                    day = np.random.randint(0, 7)
+                    month = np.random.randint(1, 13)
+                    
+                    sample_data = {
+                        'distance': distance,
+                        'weight': weight,
+                        'priority': priority,
+                        'hour': hour,
+                        'day': day,
+                        'month': month
+                    }
+                    
+                    features, _ = self.prepare_features(sample_data)
+                    training_features.append(features.flatten())
+                    
+                    # Generate realistic target based on complex rules
+                    base_cost = 2.5 * distance + 0.8 * weight
+                    priority_multiplier = {'Low': 0.9, 'Medium': 1.0, 'High': 1.2, 'Critical': 1.5}[priority]
+                    time_multiplier = 1.1 if hour < 6 or hour > 18 else 1.0
+                    weekend_multiplier = 1.15 if day >= 5 else 1.0
+                    seasonal_multiplier = 1.1 if month in [11, 12, 1] else 1.0
+                    
+                    target = base_cost * priority_multiplier * time_multiplier * weekend_multiplier * seasonal_multiplier
+                    target += np.random.normal(0, target * 0.1)  # Add noise
+                    training_targets.append(max(target, 50))  # Minimum cost
+                
+                X = np.array(training_features)
+                y = np.array(training_targets)
+            else:
+                X, y = training_data
             
             # Scale features
-            X_train_scaled = self.scaler.fit_transform(X_train)
-            X_test_scaled = self.scaler.transform(X_test)
+            X_scaled = self.scaler.fit_transform(X)
             
-            # Train model based on type with availability checks
+            # Train model based on type
             if self.model_type == 'random_forest':
-                self.model = RandomForestRegressor(
-                    n_estimators=100, 
-                    random_state=42, 
-                    n_jobs=-1,
-                    max_depth=10,
-                    min_samples_split=5
-                )
-                self.model.fit(X_train_scaled, y_train)
-                
+                self.model = RandomForestRegressor(n_estimators=100, random_state=42, max_depth=10)
             elif self.model_type == 'gradient_boosting':
-                self.model = GradientBoostingRegressor(
-                    n_estimators=100, 
-                    random_state=42,
-                    max_depth=6,
-                    learning_rate=0.1
-                )
-                self.model.fit(X_train_scaled, y_train)
-                
-            elif self.model_type == 'xgboost':
-                if not XGBOOST_AVAILABLE:
-                    st.error("XGBoost not available. Please install: pip install xgboost")
-                    return False
-                self.model = xgb.XGBRegressor(
-                    n_estimators=100, 
-                    random_state=42, 
-                    n_jobs=-1,
-                    max_depth=6,
-                    learning_rate=0.1
-                )
-                self.model.fit(X_train_scaled, y_train)
-                
-            elif self.model_type == 'lightgbm':
-                if not LIGHTGBM_AVAILABLE:
-                    st.error("LightGBM not available. Please install: pip install lightgbm")
-                    return False
-                self.model = lgb.LGBMRegressor(
-                    n_estimators=100,
-                    random_state=42,
-                    n_jobs=-1,
-                    max_depth=6,
-                    learning_rate=0.1,
-                    verbose=-1
-                )
-                self.model.fit(X_train_scaled, y_train)
-                
+                self.model = GradientBoostingRegressor(n_estimators=100, random_state=42, max_depth=6)
             elif self.model_type == 'neural_network':
-                self.model = MLPRegressor(
-                    hidden_layer_sizes=(128, 64, 32), 
-                    random_state=42, 
-                    max_iter=500,
-                    learning_rate_init=0.001,
-                    early_stopping=True,
-                    validation_fraction=0.2
-                )
-                self.model.fit(X_train_scaled, y_train)
-                
-            elif self.model_type == 'lstm':
-                if not TENSORFLOW_AVAILABLE:
-                    st.error("TensorFlow not available. Please install: pip install tensorflow")
-                    return False
-                self.model = self._build_lstm_model(X_train_scaled.shape[1])
-                
-                # Reshape for LSTM (samples, timesteps, features)
-                X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], 1, X_train_scaled.shape[1]))
-                X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], 1, X_test_scaled.shape[1]))
-                
-                early_stopping = EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True)
-                
-                history = self.model.fit(
-                    X_train_lstm, y_train, 
-                    epochs=100, 
-                    batch_size=32, 
-                    validation_data=(X_test_lstm, y_test), 
-                    callbacks=[early_stopping], 
-                    verbose=0
-                )
-                
-            elif self.model_type == 'ensemble':
-                # Create ensemble of available models
-                models = [
-                    ('rf', RandomForestRegressor(n_estimators=50, random_state=42, max_depth=8)),
-                    ('gb', GradientBoostingRegressor(n_estimators=50, random_state=42, max_depth=6))
-                ]
-                
-                if XGBOOST_AVAILABLE:
-                    models.append(('xgb', xgb.XGBRegressor(n_estimators=50, random_state=42, max_depth=6)))
-                
-                if len(models) < 2:
-                    st.error("Not enough models available for ensemble. Please install XGBoost.")
-                    return False
-                
-                self.model = VotingRegressor(models)
-                self.model.fit(X_train_scaled, y_train)
-            
-            # Calculate predictions
-            if self.model_type == 'lstm':
-                y_pred = self.model.predict(X_test_lstm, verbose=0).flatten()
+                self.model = MLPRegressor(hidden_layer_sizes=(128, 64, 32), random_state=42, max_iter=500)
+            elif self.model_type == 'xgboost' and XGBOOST_AVAILABLE:
+                self.model = xgb.XGBRegressor(n_estimators=100, random_state=42, max_depth=6)
+            elif self.model_type == 'lightgbm' and LIGHTGBM_AVAILABLE:
+                self.model = lgb.LGBMRegressor(n_estimators=100, random_state=42, max_depth=6, verbose=-1)
+            elif self.model_type == 'lstm' and TF_AVAILABLE:
+                self.model = self._create_lstm_model(X_scaled.shape[1])
+                return self._train_lstm(X_scaled, y)
             else:
-                y_pred = self.model.predict(X_test_scaled)
+                # Fallback to gradient boosting
+                self.model = GradientBoostingRegressor(n_estimators=100, random_state=42, max_depth=6)
+            
+            # Train the model
+            self.model.fit(X_scaled, y)
             
             # Calculate performance metrics
+            y_pred = self.model.predict(X_scaled)
             self.performance_metrics = {
-                'mae': mean_absolute_error(y_test, y_pred),
-                'mse': mean_squared_error(y_test, y_pred),
-                'rmse': np.sqrt(mean_squared_error(y_test, y_pred)),
-                'r2': r2_score(y_test, y_pred),
-                'accuracy': max(0, 1 - (mean_absolute_error(y_test, y_pred) / np.mean(y_test))) if np.mean(y_test) > 0 else 0
+                'mae': mean_absolute_error(y, y_pred),
+                'rmse': np.sqrt(mean_squared_error(y, y_pred)),
+                'r2': r2_score(y, y_pred),
+                'mape': np.mean(np.abs((y - y_pred) / y)) * 100
             }
             
             self.is_trained = True
             return True
             
         except Exception as e:
-            st.error(f"Error training {self.name}: {str(e)}")
+            st.error(f"Training failed for {self.name}: {str(e)}")
             return False
-    
-    def _build_lstm_model(self, input_features):
-        """Enhanced LSTM architecture"""
-        if not TENSORFLOW_AVAILABLE:
-            raise ImportError("TensorFlow not available")
-            
+
+    def _create_lstm_model(self, input_dim):
+        """Create LSTM model for time series prediction"""
         model = Sequential([
-            LSTM(128, input_shape=(1, input_features), return_sequences=True),
-            Dropout(0.3),
-            BatchNormalization(),
-            LSTM(64, return_sequences=True),
-            Dropout(0.3),
-            LSTM(32, return_sequences=False),
+            Dense(64, activation='relu', input_shape=(input_dim,)),
             Dropout(0.2),
-            Dense(64, activation='relu'),
-            BatchNormalization(),
             Dense(32, activation='relu'),
-            Dense(1)
+            Dropout(0.2),
+            Dense(16, activation='relu'),
+            Dense(1, activation='linear')
         ])
-        
-        model.compile(
-            optimizer=Adam(learning_rate=0.001), 
-            loss='mse', 
-            metrics=['mae']
-        )
+        model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
         return model
-    
-    def predict(self, X):
-        """Enhanced prediction with error handling"""
-        if not self.is_trained or self.model is None:
+
+    def _train_lstm(self, X, y):
+        """Train LSTM model"""
+        try:
+            X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+            
+            early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+            
+            history = self.model.fit(
+                X_train, y_train,
+                validation_data=(X_val, y_val),
+                epochs=50,
+                batch_size=32,
+                callbacks=[early_stopping],
+                verbose=0
+            )
+            
+            # Calculate performance metrics
+            y_pred = self.model.predict(X, verbose=0).flatten()
+            self.performance_metrics = {
+                'mae': mean_absolute_error(y, y_pred),
+                'rmse': np.sqrt(mean_squared_error(y, y_pred)),
+                'r2': r2_score(y, y_pred),
+                'mape': np.mean(np.abs((y - y_pred) / y)) * 100
+            }
+            
+            self.is_trained = True
+            return True
+        except Exception as e:
+            st.error(f"LSTM training failed: {str(e)}")
+            return False
+
+    def predict(self, data):
+        """Make prediction for shipping cost"""
+        if not self.is_trained:
             return None
         
         try:
-            # Ensure we have the same features as training
-            if self.feature_columns:
-                missing_cols = set(self.feature_columns) - set(X.columns)
-                for col in missing_cols:
-                    X[col] = 0
-                X = X[self.feature_columns]
+            features, _ = self.prepare_features(data)
+            features_scaled = self.scaler.transform(features)
             
-            X_scaled = self.scaler.transform(X.fillna(0))
-            
-            if self.model_type == 'lstm':
-                X_scaled = X_scaled.reshape((X_scaled.shape[0], 1, X_scaled.shape[1]))
-                predictions = self.model.predict(X_scaled, verbose=0).flatten()
+            if self.model_type == 'lstm' and TF_AVAILABLE:
+                prediction = self.model.predict(features_scaled, verbose=0)[0][0]
             else:
-                predictions = self.model.predict(X_scaled)
+                prediction = self.model.predict(features_scaled)[0]
             
-            return predictions
-            
+            return max(prediction, 50)  # Minimum cost constraint
         except Exception as e:
-            st.error(f"Error making predictions with {self.name}: {str(e)}")
+            st.error(f"Prediction failed for {self.name}: {str(e)}")
             return None
 
-# Enhanced distance calculation
-def calculate_real_distance(origin_city, origin_state, dest_city, dest_state):
-    """Calculate real distance using geocoding"""
+# Enhanced Multi-Agent System
+class EnhancedMultiAgentSystem:
+    def __init__(self):
+        self.agents = {}
+        self.ensemble_weights = {}
+        
+    def add_agent(self, name, model_type):
+        """Add a new agent to the system"""
+        agent = AdvancedMLAgent(name, model_type)
+        self.agents[name] = agent
+        return agent
+    
+    def train_all_agents(self, training_data=None):
+        """Train all agents in the system"""
+        results = {}
+        progress_bar = st.progress(0)
+        
+        for i, (name, agent) in enumerate(self.agents.items()):
+            st.write(f"Training {name}...")
+            success = agent.train(training_data)
+            results[name] = success
+            progress_bar.progress((i + 1) / len(self.agents))
+        
+        # Calculate ensemble weights based on performance
+        self._calculate_ensemble_weights()
+        return results
+    
+    def _calculate_ensemble_weights(self):
+        """Calculate ensemble weights based on model performance"""
+        weights = {}
+        total_performance = 0
+        
+        for name, agent in self.agents.items():
+            if agent.is_trained and agent.performance_metrics:
+                # Use inverse of MAPE as weight (lower MAPE = higher weight)
+                performance = 1 / (agent.performance_metrics.get('mape', 100) + 1)
+                weights[name] = performance
+                total_performance += performance
+        
+        # Normalize weights
+        if total_performance > 0:
+            for name in weights:
+                weights[name] = weights[name] / total_performance
+        
+        self.ensemble_weights = weights
+    
+    def get_ensemble_prediction(self, data):
+        """Get ensemble prediction from all trained agents"""
+        predictions = {}
+        weighted_sum = 0
+        total_weight = 0
+        
+        for name, agent in self.agents.items():
+            if agent.is_trained:
+                pred = agent.predict(data)
+                if pred is not None:
+                    predictions[name] = pred
+                    weight = self.ensemble_weights.get(name, 1.0)
+                    weighted_sum += pred * weight
+                    total_weight += weight
+        
+        ensemble_prediction = weighted_sum / total_weight if total_weight > 0 else None
+        return ensemble_prediction, predictions
+
+# Utility functions
+def calculate_distance(origin, destination):
+    """Calculate distance between two locations"""
     if GEOPY_AVAILABLE and st.session_state.geocoder:
         try:
-            origin_location = st.session_state.geocoder.geocode(f"{origin_city}, {origin_state}")
-            dest_location = st.session_state.geocoder.geocode(f"{dest_city}, {dest_state}")
+            origin_coord = st.session_state.geocoder.geocode(origin)
+            dest_coord = st.session_state.geocoder.geocode(destination)
             
-            if origin_location and dest_location:
-                origin_coords = (origin_location.latitude, origin_location.longitude)
-                dest_coords = (dest_location.latitude, dest_location.longitude)
-                distance = geodesic(origin_coords, dest_coords).miles
+            if origin_coord and dest_coord:
+                distance = geodesic(
+                    (origin_coord.latitude, origin_coord.longitude),
+                    (dest_coord.latitude, dest_coord.longitude)
+                ).miles
                 return distance
-        except:
+        except Exception:
             pass
     
-    # Fallback to estimation
-    if origin_state == dest_state:
-        if origin_city.lower() == dest_city.lower():
-            return random.uniform(10, 50)
-        else:
-            return random.uniform(50, 400)
-    else:
-        return random.uniform(200, 2800)
-
-# Carrier configurations
-CARRIERS = {
-    'UPS': {
-        'base_rate': 8.50, 'weight_factor': 0.45, 'distance_factor': 0.0012,
-        'service_multiplier': {'ground': 1.0, 'express': 1.8, 'overnight': 2.5},
-        'zone_factors': [1.0, 1.1, 1.2, 1.35, 1.5, 1.7, 1.9, 2.1],
-        'fuel_surcharge': 0.085, 'residential_fee': 4.95,
-        'strength': 'Express Delivery', 'color': '#8B4513'
-    },
-    'FedEx': {
-        'base_rate': 9.25, 'weight_factor': 0.42, 'distance_factor': 0.0011,
-        'service_multiplier': {'ground': 1.0, 'express': 1.9, 'overnight': 2.7},
-        'zone_factors': [1.0, 1.12, 1.25, 1.4, 1.55, 1.75, 1.95, 2.2],
-        'fuel_surcharge': 0.092, 'residential_fee': 5.25,
-        'strength': 'Overnight Delivery', 'color': '#4B0082'
-    },
-    'USPS': {
-        'base_rate': 6.75, 'weight_factor': 0.38, 'distance_factor': 0.0008,
-        'service_multiplier': {'ground': 1.0, 'express': 1.6, 'overnight': 2.2},
-        'zone_factors': [1.0, 1.05, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6],
-        'fuel_surcharge': 0.065, 'residential_fee': 0.0,
-        'strength': 'Cost Effective', 'color': '#1E90FF'
-    },
-    'DHL': {
-        'base_rate': 11.50, 'weight_factor': 0.48, 'distance_factor': 0.0015,
-        'service_multiplier': {'ground': 1.2, 'express': 2.0, 'overnight': 3.0},
-        'zone_factors': [1.0, 1.15, 1.3, 1.5, 1.7, 1.9, 2.1, 2.4],
-        'fuel_surcharge': 0.105, 'residential_fee': 6.50,
-        'strength': 'International', 'color': '#FFD700'
-    },
-    'OnTrac': {
-        'base_rate': 7.25, 'weight_factor': 0.35, 'distance_factor': 0.0009,
-        'service_multiplier': {'ground': 1.0, 'express': 1.7, 'overnight': 2.3},
-        'zone_factors': [1.0, 1.08, 1.15, 1.25, 1.35, 1.45, 1.55, 1.7],
-        'fuel_surcharge': 0.075, 'residential_fee': 3.95,
-        'strength': 'Regional Optimization', 'color': '#32CD32'
+    # Fallback: estimate based on string similarity and common routes
+    route_estimates = {
+        ('new york', 'chicago'): 790,
+        ('los angeles', 'san francisco'): 380,
+        ('miami', 'orlando'): 235,
+        ('dallas', 'houston'): 240,
+        ('seattle', 'portland'): 173,
+        ('boston', 'philadelphia'): 300,
+        ('denver', 'salt lake city'): 525,
+        ('atlanta', 'charlotte'): 245
     }
-}
-
-# Enhanced cost calculation
-def calculate_enhanced_cost(carrier, carrier_data, shipment_details, ml_adjustment=1.0):
-    """Enhanced cost calculation with real-world factors"""
-    try:
-        weight = float(shipment_details.get('weight', 1))
-        declared_value = float(shipment_details.get('declared_value', 100))
-        length = float(shipment_details.get('length', 10))
-        width = float(shipment_details.get('width', 10))
-        height = float(shipment_details.get('height', 10))
-        service_type = shipment_details.get('service_type', 'ground')
-        special_handling = shipment_details.get('special_handling', 'none')
-        
-        # Calculate real distance
-        distance = calculate_real_distance(
-            shipment_details.get('origin_city', ''),
-            shipment_details.get('origin_state', ''),
-            shipment_details.get('dest_city', ''),
-            shipment_details.get('dest_state', '')
-        )
-        
-        # Calculate dimensional weight
-        dim_weight = (length * width * height) / 166
-        billable_weight = max(weight, dim_weight)
-        
-        # Enhanced cost calculation
-        total_cost = carrier_data['base_rate']
-        
-        # Weight-based cost with progressive scaling
-        weight_cost = billable_weight * carrier_data['weight_factor']
-        if billable_weight > 10:
-            weight_cost *= 1.1  # 10% surcharge for heavy packages
-        
-        total_cost += weight_cost
-        
-        # Distance-based cost with zone calculation
-        zone = min(int(distance / 250), 7)
-        zone_multiplier = carrier_data['zone_factors'][zone]
-        total_cost *= zone_multiplier
-        
-        distance_cost = distance * carrier_data['distance_factor']
-        total_cost += distance_cost
-        
-        # Service type multiplier
-        service_multiplier = carrier_data['service_multiplier'][service_type]
-        total_cost *= service_multiplier
-        
-        # Dynamic fuel surcharge (simulate market conditions)
-        fuel_rate = carrier_data['fuel_surcharge'] * random.uniform(0.9, 1.1)
-        fuel_cost = total_cost * fuel_rate
-        total_cost += fuel_cost
-        
-        # Residential delivery fee
-        total_cost += carrier_data['residential_fee']
-        
-        # Insurance cost
-        insurance_cost = max(declared_value * 0.005, 2.0)
-        total_cost += insurance_cost
-        
-        # Special handling fees
-        handling_fees = {
-            'fragile': 15.00, 'hazmat': 45.00, 'signature': 8.50, 
-            'adult_signature': 12.75, 'white_glove': 25.00
-        }
-        if special_handling in handling_fees:
-            total_cost += handling_fees[special_handling]
-        
-        # Apply ML model adjustment
-        total_cost *= ml_adjustment
-        
-        # Calculate delivery estimation
-        base_days = {'ground': zone + 1, 'express': max(zone - 1, 1), 'overnight': 1}
-        carrier_adjustments = {'UPS': 0, 'FedEx': 0, 'USPS': 1, 'DHL': -1, 'OnTrac': 0}
-        estimated_days = max(base_days[service_type] + carrier_adjustments.get(carrier, 0), 1)
-        
-        # Enhanced confidence calculation
-        confidence = 0.85
-        if carrier == 'USPS' and distance < 500: confidence += 0.1
-        if carrier == 'OnTrac' and distance < 1000: confidence += 0.08
-        if carrier in ['UPS', 'FedEx'] and weight > 5: confidence += 0.1
-        if service_type == 'overnight' and carrier in ['UPS', 'FedEx']: confidence += 0.05
-        
-        # Add ML model confidence boost
-        if ml_adjustment != 1.0:
-            confidence += 0.05
-        
-        confidence = min(confidence + random.uniform(0, 0.05), 0.98)
-        
-        return {
-            'carrier': carrier,
-            'total_cost': round(total_cost, 2),
-            'base_cost': carrier_data['base_rate'],
-            'weight_cost': round(weight_cost, 2),
-            'distance_cost': round(distance_cost, 2),
-            'zone_multiplier': zone_multiplier,
-            'fuel_cost': round(fuel_cost, 2),
-            'insurance_cost': round(insurance_cost, 2),
-            'estimated_days': estimated_days,
-            'distance': round(distance, 1),
-            'billable_weight': round(billable_weight, 1),
-            'confidence_score': round(confidence, 3),
-            'strength': carrier_data['strength'],
-            'zone': zone + 1
-        }
-        
-    except Exception as e:
-        st.error(f"Error calculating cost for {carrier}: {str(e)}")
-        return None
-
-# Generate sample training data
-def generate_sample_data(num_samples=1000):
-    """Generate realistic sample training data"""
-    np.random.seed(42)
-    random.seed(42)
     
-    carriers = list(CARRIERS.keys())
-    service_types = ['ground', 'express', 'overnight']
-    states = ['CA', 'TX', 'FL', 'NY', 'IL', 'PA', 'OH', 'GA', 'NC', 'MI', 'NJ', 'VA', 'WA', 'AZ', 'MA']
-    cities = {
-        'CA': ['Los Angeles', 'San Francisco', 'San Diego'],
-        'TX': ['Houston', 'Dallas', 'Austin'],
-        'FL': ['Miami', 'Tampa', 'Jacksonville'],
-        'NY': ['New York', 'Buffalo', 'Albany'],
-        'IL': ['Chicago', 'Springfield', 'Rockford']
-    }
+    origin_lower = origin.lower()
+    destination_lower = destination.lower()
+    
+    for (o, d), dist in route_estimates.items():
+        if (o in origin_lower and d in destination_lower) or (d in origin_lower and o in destination_lower):
+            return dist
+    
+    # Default estimate based on route complexity
+    return np.random.uniform(200, 1200)
+
+def generate_sample_data():
+    """Generate sample shipping data for demonstration"""
+    np.random.seed(42)
+    
+    cities = ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 
+              'San Antonio', 'San Diego', 'Dallas', 'San Jose', 'Austin', 'Jacksonville']
     
     data = []
-    for _ in range(num_samples):
-        carrier = random.choice(carriers)
-        service_type = random.choice(service_types)
-        origin_state = random.choice(states)
-        dest_state = random.choice(states)
-        
-        # Generate realistic package dimensions
-        weight = round(random.uniform(0.5, 50), 1)
-        length = round(random.uniform(6, 36), 1)
-        width = round(random.uniform(4, 24), 1)
-        height = round(random.uniform(2, 18), 1)
-        declared_value = round(random.uniform(10, 5000), 2)
-        
-        # Calculate distance
-        distance = calculate_real_distance('City1', origin_state, 'City2', dest_state)
+    for _ in range(100):
+        origin = np.random.choice(cities)
+        destination = np.random.choice([c for c in cities if c != origin])
+        distance = calculate_distance(origin, destination)
+        weight = np.random.exponential(2000) + 100
+        priority = np.random.choice(['Low', 'Medium', 'High', 'Critical'])
         
         # Calculate realistic cost
-        shipment_details = {
-            'weight': weight, 'declared_value': declared_value,
-            'length': length, 'width': width, 'height': height,
-            'service_type': service_type, 'special_handling': 'none',
-            'origin_state': origin_state, 'dest_state': dest_state,
-            'origin_city': 'City1', 'dest_city': 'City2'
-        }
+        base_rate = 2.5
+        weight_rate = 0.8
+        priority_multiplier = {'Low': 0.9, 'Medium': 1.0, 'High': 1.2, 'Critical': 1.5}[priority]
         
-        cost_result = calculate_enhanced_cost(carrier, CARRIERS[carrier], shipment_details)
-        if cost_result:
-            data.append({
-                'Carrier': carrier,
-                'Service_Type': service_type,
-                'Package_Weight_lbs': weight,
-                'Package_Length_in': length,
-                'Package_Width_in': width,
-                'Package_Height_in': height,
-                'Declared_Value_USD': declared_value,
-                'Distance_miles': distance,
-                'Origin_State': origin_state,
-                'Destination_State': dest_state,
-                'Total_Cost_USD': cost_result['total_cost']
-            })
+        cost = (base_rate * distance + weight_rate * weight) * priority_multiplier
+        cost += np.random.normal(0, cost * 0.1)  # Add noise
+        cost = max(cost, 50)  # Minimum cost
+        
+        data.append({
+            'origin': origin,
+            'destination': destination,
+            'distance': distance,
+            'weight': weight,
+            'priority': priority,
+            'actual_cost': cost
+        })
     
     return pd.DataFrame(data)
 
-# Main Streamlit App
+# Main application
 def main():
     init_session_state()
     
-    # Sidebar for API configuration
-    with st.sidebar:
-        st.header("🔧 Configuration")
-        
-        # Claude API Key input
-        st.subheader("🤖 Claude API Setup")
-        if ANTHROPIC_AVAILABLE:
-            # Use session state to persist API key
-            if 'claude_api_key' not in st.session_state:
-                st.session_state.claude_api_key = ""
-            
-            api_key = st.text_input(
-                "Claude API Key", 
-                value=st.session_state.claude_api_key,
-                type="password", 
-                help="Enter your Claude API key",
-                key="api_key_input"
-            )
-            
-            # Update session state when key changes
-            if api_key != st.session_state.claude_api_key:
-                st.session_state.claude_api_key = api_key
-                st.session_state.api_validated = False  # Reset validation when key changes
-            
-            # Validate API key if provided and not already validated
-            if api_key and len(api_key) > 10 and not st.session_state.get('api_validated', False):
-                with st.spinner("Validating Claude API key..."):
-                    is_valid, result = validate_claude_api(api_key)
-                    if is_valid:
-                        st.session_state.claude_client = result
-                        st.session_state.api_validated = True
-                        st.session_state.claude_api_key = api_key  # Store validated key
-                        st.success("✅ API key validated successfully!")
-                        st.rerun()  # Refresh to show connected status
-                    else:
-                        st.session_state.api_validated = False
-                        st.error(f"❌ API validation failed: {result}")
-            
-            # Show connection status
-            if st.session_state.get('api_validated', False) and st.session_state.get('claude_api_key', ''):
-                st.markdown('<div class="api-status">🟢 Claude API Connected</div>', unsafe_allow_html=True)
-                st.info(f"Using API key: ...{st.session_state.claude_api_key[-8:]}")
-            else:
-                st.markdown('<div class="api-error">🔴 Claude API Not Connected</div>', unsafe_allow_html=True)
-                if api_key and len(api_key) < 10:
-                    st.warning("API key seems too short. Please check and re-enter.")
-        else:
-            st.markdown('<div class="api-error">🔴 Anthropic library not installed</div>', unsafe_allow_html=True)
-            st.info("📦 Install anthropic library to enable Claude API: `pip install anthropic`")
-        
-        # Model training status
-        st.subheader("📊 Model Status")
-        if st.session_state.trained_models:
-            st.success(f"✅ {len(st.session_state.trained_models)} models trained")
-            for model_name in st.session_state.trained_models.keys():
-                performance = st.session_state.trained_models[model_name].performance_metrics
-                if performance:
-                    st.write(f"**{model_name.title()}**: {performance.get('accuracy', 0)*100:.1f}% accuracy")
-        else:
-            st.info("No models trained yet")
-        
-        # Quick actions
-        st.subheader("🚀 Quick Actions")
-        if st.button("Generate Sample Data", help="Create sample training data"):
-            with st.spinner("Generating sample data..."):
-                sample_data = generate_sample_data(1000)
-                st.session_state.data = sample_data
-                st.success("Sample data generated!")
-        
-        if st.button("Reset All Models", help="Clear all trained models"):
-            st.session_state.trained_models = {}
-            st.session_state.model_performance = {}
-            st.success("Models reset!")
-
     # Header
     st.markdown("""
     <div class="main-header">
-        <h1>🚚 Advanced Lane Optimization System</h1>
-        <h3>AI-Powered Carrier Selection with Multi-Model ML Agents</h3>
-        <p>LSTM Neural Networks • Ensemble Methods • Real-time Cost Optimization • Claude AI Integration</p>
+        <h1>🚚 Advanced Lane Optimization System v14</h1>
+        <p>AI-Powered Multi-Agent Shipping Cost Optimization with Claude Integration</p>
+        <p><strong>Features:</strong> ML Ensemble • Real-time Predictions • Claude AI Insights • Advanced Analytics</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Optimize Routes", "📊 Train Models", "🔍 Model Performance", "📈 Analytics"])
+    # Sidebar configuration
+    with st.sidebar:
+        st.header("⚙️ System Configuration")
+        
+        # Library status
+        st.subheader("📦 Library Status")
+        library_status = {
+            "Core ML": "✅ Available",
+            "TensorFlow": "✅ Available" if TF_AVAILABLE else "❌ Not installed",
+            "XGBoost": "✅ Available" if XGBOOST_AVAILABLE else "❌ Not installed", 
+            "LightGBM": "✅ Available" if LIGHTGBM_AVAILABLE else "❌ Not installed",
+            "Anthropic": "✅ Available" if ANTHROPIC_AVAILABLE else "❌ Not installed",
+            "GeoPy": "✅ Available" if GEOPY_AVAILABLE else "❌ Not installed"
+        }
+        
+        for lib, status in library_status.items():
+            st.write(f"**{lib}**: {status}")
+        
+        if ANTHROPIC_AVAILABLE:
+            st.divider()
+            
+            # Claude API Key input
+            st.subheader("🤖 Claude API Setup")
+            
+            # Debug info
+            with st.expander("🔧 Debug Info", expanded=False):
+                debug_info = {
+                    "Secrets available": hasattr(st, 'secrets'),
+                    "CLAUDE_API_KEY in secrets": hasattr(st, 'secrets') and 'CLAUDE_API_KEY' in st.secrets,
+                    "API validated": st.session_state.api_validated,
+                    "Anthropic available": ANTHROPIC_AVAILABLE
+                }
+                for key, value in debug_info.items():
+                    st.code(f"{key}: {value}")
+            
+            # Try to get API key from Streamlit secrets first
+            api_key = None
+            api_source = "manual"
+            
+            if hasattr(st, 'secrets') and 'CLAUDE_API_KEY' in st.secrets:
+                api_key = st.secrets.CLAUDE_API_KEY
+                api_source = "secrets"
+                st.success(f"✅ Found API key in Streamlit secrets (length: {len(api_key) if api_key else 0})")
+            
+            # Manual input (will override secrets if provided)
+            manual_key = st.text_input(
+                "Claude API Key", 
+                type="password", 
+                help="Enter your Claude API key or add to Streamlit secrets",
+                placeholder="sk-ant-..."
+            )
+            
+            if manual_key:
+                api_key = manual_key
+                api_source = "manual"
+            
+            # Show current API key status
+            if api_key:
+                st.info(f"🔑 Using API key from: **{api_source}** (starts with: {api_key[:10]}...)")
+            else:
+                st.warning("⚠️ No API key found in secrets or manual input")
+            
+            # Validate API key
+            if api_key and not st.session_state.api_validated:
+                if st.button("🔄 Validate API Key") or api_source == "secrets":
+                    with st.spinner("Validating API key..."):
+                        is_valid, result = validate_claude_api(api_key)
+                        if is_valid:
+                            st.session_state.claude_client = result
+                            st.session_state.api_validated = True
+                            st.success("✅ API key validated successfully!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ API validation failed: {result}")
+                            st.session_state.api_validated = False
+            
+            # Reset API validation if needed
+            if st.session_state.api_validated:
+                if st.button("🔄 Reset API Connection"):
+                    st.session_state.api_validated = False
+                    st.session_state.claude_client = None
+                    st.rerun()
+            
+            if st.session_state.api_validated:
+                st.markdown('<div class="api-status">🟢 Claude API Connected</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="api-error">🔴 Claude API Not Connected</div>', unsafe_allow_html=True)
+                
+                st.markdown("""
+                ### 🛠️ Troubleshooting Tips:
+                
+                1. **Check API Key Format**: Should start with `sk-ant-`
+                2. **Verify API Key**: Get a new one from [Claude Console](https://console.anthropic.com)
+                3. **Streamlit Secrets Setup**:
+                   ```toml
+                   # .streamlit/secrets.toml
+                   CLAUDE_API_KEY = "sk-ant-your-key-here"
+                   ```
+                4. **Restart Streamlit**: After adding secrets, restart your app
+                5. **Check Network**: Ensure you can reach api.anthropic.com
+                """)
+                
+                st.info("""
+                💡 **To use Streamlit secrets for Claude API:**
+                
+                1. Create `.streamlit/secrets.toml` in your project root
+                2. Add: `CLAUDE_API_KEY = "your-api-key-here"`
+                3. Restart your Streamlit app
+                4. Or use the input field above for testing
+                """)
+        else:
+            st.info("📦 Install anthropic library to enable Claude API: `pip install anthropic`")
+    
+    # Main content tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Optimization", "🤖 Model Training", "📊 Analytics", "ℹ️ About"])
     
     with tab1:
-        st.header("🎯 Route Optimization with AI")
+        st.header("🎯 Shipping Lane Optimization")
         
-        col1, col2 = st.columns([1, 2])
+        col1, col2 = st.columns([2, 1])
         
         with col1:
             st.markdown('<div class="input-section">', unsafe_allow_html=True)
-            st.subheader("📦 Shipment Details")
+            st.subheader("📍 Route Information")
             
-            # Origin details
-            st.write("**🚀 Origin Information**")
-            origin_city = st.text_input("Origin City", value="Chicago", placeholder="Enter city name")
-            origin_state = st.selectbox("Origin State", 
-                                      options=['IL', 'CA', 'TX', 'FL', 'NY', 'PA', 'OH', 'GA', 'NC', 'MI'],
-                                      index=0)
-            origin_zip = st.text_input("Origin ZIP", value="60601", placeholder="ZIP code")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                origin = st.text_input("Origin City", value="New York", help="Enter departure city")
+            with col_b:
+                destination = st.text_input("Destination City", value="Los Angeles", help="Enter destination city")
             
-            # Destination details
-            st.write("**🎯 Destination Information**")
-            dest_city = st.text_input("Destination City", value="Louisville", placeholder="Enter city name")
-            dest_state = st.selectbox("Destination State", 
-                                    options=['KY', 'CA', 'TX', 'FL', 'NY', 'PA', 'OH', 'GA', 'NC', 'MI'],
-                                    index=0)
-            dest_zip = st.text_input("Destination ZIP", value="40201", placeholder="ZIP code")
-            
-            # Package details
-            st.write("**📦 Package Specifications**")
-            col_w, col_v = st.columns(2)
-            with col_w:
-                weight = st.number_input("Weight (lbs)", min_value=0.1, value=5.0, step=0.1)
-            with col_v:
-                declared_value = st.number_input("Declared Value ($)", min_value=1.0, value=500.0, step=10.0)
-            
-            col_l, col_w_dim, col_h = st.columns(3)
-            with col_l:
-                length = st.number_input("Length (in)", min_value=1.0, value=12.0, step=0.5)
-            with col_w_dim:
-                width = st.number_input("Width (in)", min_value=1.0, value=8.0, step=0.5)
-            with col_h:
-                height = st.number_input("Height (in)", min_value=1.0, value=6.0, step=0.5)
-            
-            # Service options
-            st.write("**⚡ Service Preferences**")
-            service_type = st.selectbox("Service Type", 
-                                      options=['ground', 'express', 'overnight'],
-                                      format_func=lambda x: f"🚛 {x.replace('_', ' ').title()}")
-            
-            special_handling = st.selectbox("Special Handling", 
-                                          options=['none', 'fragile', 'hazmat', 'signature', 'adult_signature'],
-                                          format_func=lambda x: f"📋 {x.replace('_', ' ').title()}")
-            
-            # ML Model selection
-            st.write("**🤖 AI Model Selection**")
-            
-            # Get available models based on installed libraries
-            available_models = []
-            if st.session_state.trained_models:
-                available_models = list(st.session_state.trained_models.keys())
-            
-            # Add base calculation as fallback
-            if not available_models:
-                available_models = ['base_calculation']
-            
-            model_names = {
-                'ensemble': '🏆 Ensemble (Best)',
-                'lstm': '🧠 LSTM Neural Network',
-                'xgboost': '⚡ XGBoost',
-                'lightgbm': '💡 LightGBM',
-                'gradient_boosting': '📈 Gradient Boosting',
-                'random_forest': '🌳 Random Forest',
-                'neural_network': '🔗 Neural Network',
-                'base_calculation': '📊 Base Calculation'
-            }
-            
-            if len(available_models) > 1 or available_models[0] != 'base_calculation':
-                selected_model = st.selectbox("ML Model", 
-                                            options=available_models,
-                                            format_func=lambda x: model_names.get(x, x.title()))
-            else:
-                selected_model = 'base_calculation'
-                st.info("📚 Train models first to use ML predictions")
+            col_c, col_d = st.columns(2)
+            with col_c:
+                weight = st.number_input("Shipment Weight (lbs)", min_value=1, max_value=80000, value=2500)
+            with col_d:
+                priority = st.selectbox("Priority Level", ["Low", "Medium", "High", "Critical"])
             
             st.markdown('</div>', unsafe_allow_html=True)
             
-            # Calculate button
-            if st.button("🚀 Calculate Optimal Routes", type="primary", use_container_width=True):
-                if origin_city and dest_city:
-                    with st.spinner("🔄 Calculating optimal routes with AI..."):
-                        shipment_details = {
-                            'origin_city': origin_city, 'origin_state': origin_state,
-                            'dest_city': dest_city, 'dest_state': dest_state,
-                            'weight': weight, 'declared_value': declared_value,
-                            'length': length, 'width': width, 'height': height,
-                            'service_type': service_type, 'special_handling': special_handling
+            # Calculate distance
+            distance = calculate_distance(origin, destination)
+            st.info(f"📏 Estimated Distance: **{distance:.0f} miles**")
+            
+            # Prediction section
+            if st.button("🚀 Get Optimization Recommendations", type="primary"):
+                if not st.session_state.trained_models:
+                    st.warning("⚠️ No trained models available. Please train models first in the Model Training tab.")
+                else:
+                    with st.spinner("🤖 Generating predictions..."):
+                        # Prepare input data
+                        input_data = {
+                            'distance': distance,
+                            'weight': weight,
+                            'priority': priority,
+                            'hour': datetime.now().hour,
+                            'day': datetime.now().weekday(),
+                            'month': datetime.now().month
                         }
                         
-                        # Calculate costs for all carriers
-                        results = []
-                        for carrier, carrier_data in CARRIERS.items():
-                            ml_adjustment = 1.0
-                            
-                            # Apply ML prediction if model is available
-                            if selected_model != 'base_calculation' and selected_model in st.session_state.trained_models:
-                                try:
-                                    # Create feature vector
-                                    distance = calculate_real_distance(origin_city, origin_state, dest_city, dest_state)
-                                    
-                                    feature_data = pd.DataFrame([{
-                                        'Package_Weight_lbs': weight,
-                                        'Package_Length_in': length,
-                                        'Package_Width_in': width,
-                                        'Package_Height_in': height,
-                                        'Declared_Value_USD': declared_value,
-                                        'Distance_miles': distance,
-                                        'Carrier': carrier,
-                                        'Service_Type': service_type,
-                                        'Origin_State': origin_state,
-                                        'Destination_State': dest_state
-                                    }])
-                                    
-                                    # Prepare features using the same preprocessing
-                                    model_agent = st.session_state.trained_models[selected_model]
-                                    processed_features = model_agent.prepare_features(feature_data, is_training=False)
-                                    
-                                    # Get ML prediction
-                                    prediction = model_agent.predict(processed_features)
-                                    
-                                    if prediction is not None and len(prediction) > 0:
-                                        # Calculate base cost for comparison
-                                        base_cost = calculate_enhanced_cost(carrier, carrier_data, shipment_details)
-                                        if base_cost:
-                                            # Use ML prediction directly as the cost
-                                            ml_cost = max(prediction[0], 5.0)  # Minimum $5
-                                            cost_result = base_cost.copy()
-                                            cost_result['total_cost'] = round(ml_cost, 2)
-                                            cost_result['ml_adjusted'] = True
-                                            results.append(cost_result)
-                                            continue
-                                    
-                                except Exception as e:
-                                    st.warning(f"ML prediction failed for {carrier}, using base calculation: {str(e)}")
-                            
-                            # Fallback to base calculation
-                            cost_result = calculate_enhanced_cost(carrier, carrier_data, shipment_details, ml_adjustment)
-                            if cost_result:
-                                cost_result['ml_adjusted'] = False
-                                results.append(cost_result)
+                        # Get predictions from all models
+                        predictions = {}
+                        for model_name, agent in st.session_state.trained_models.items():
+                            if agent.is_trained:
+                                pred = agent.predict(input_data)
+                                if pred:
+                                    predictions[model_name] = pred
                         
-                        # Sort and rank results
-                        if results:
-                            results.sort(key=lambda x: x['total_cost'])
-                            for i, result in enumerate(results[:3]):
-                                result['recommended'] = True
-                                result['rank'] = i + 1
+                        if predictions:
+                            # Display results
+                            st.success("✅ Optimization Complete!")
                             
-                            st.session_state.predictions = results
-                        else:
-                            st.error("Failed to calculate costs for any carrier")
-                else:
-                    st.error("Please enter both origin and destination cities.")
+                            # Calculate ensemble prediction
+                            ensemble_pred = np.mean(list(predictions.values()))
+                            time_pred = (distance / 55) + np.random.uniform(2, 8)  # Realistic transit time
+                            reliability_pred = 95 - (weight / 1000) * 0.5 - (distance / 100) * 0.3
+                            reliability_pred = max(85, min(99, reliability_pred))
+                            
+                            # Display metrics
+                            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                            
+                            with col_m1:
+                                st.markdown(f"""
+                                <div class="metric-card">
+                                    <h3>💰 Estimated Cost</h3>
+                                    <h2>${ensemble_pred:.2f}</h2>
+                                    <p>Ensemble Prediction</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            
+                            with col_m2:
+                                st.markdown(f"""
+                                <div class="metric-card">
+                                    <h3>⏱️ Transit Time</h3>
+                                    <h2>{time_pred:.1f}h</h2>
+                                    <p>Estimated Delivery</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            
+                            with col_m3:
+                                st.markdown(f"""
+                                <div class="metric-card">
+                                    <h3>📈 Reliability</h3>
+                                    <h2>{reliability_pred:.1f}%</h2>
+                                    <p>On-time Performance</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            
+                            with col_m4:
+                                best_model = min(predictions.keys(), key=lambda k: predictions[k])
+                                st.markdown(f"""
+                                <div class="metric-card">
+                                    <h3>🏆 Best Model</h3>
+                                    <h2>{best_model}</h2>
+                                    <p>${predictions[best_model]:.2f}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            
+                            # Model comparison
+                            st.subheader("🔍 Model Comparison")
+                            comparison_df = pd.DataFrame([
+                                {'Model': name, 'Predicted Cost': f"${cost:.2f}", 'Difference': f"${cost - ensemble_pred:.2f}"}
+                                for name, cost in predictions.items()
+                            ])
+                            st.dataframe(comparison_df, use_container_width=True)
+                            
+                            # Claude insights
+                            if st.session_state.api_validated and st.session_state.claude_client:
+                                with st.spinner("🤖 Getting Claude AI insights..."):
+                                    claude_insights = get_claude_insights(
+                                        {
+                                            'origin': origin,
+                                            'destination': destination,
+                                            'distance': distance,
+                                            'weight': weight,
+                                            'priority': priority,
+                                            'predicted_cost': ensemble_pred,
+                                            'predicted_time': time_pred,
+                                            'reliability': reliability_pred
+                                        },
+                                        st.session_state.claude_client
+                                    )
+                                    
+                                    st.markdown("### 🤖 Claude AI Insights")
+                                    st.markdown(f"""
+                                    <div class="claude-insights">
+                                        {claude_insights}
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                            
+                            # Store prediction in session state
+                            st.session_state.predictions.append({
+                                'timestamp': datetime.now(),
+                                'origin': origin,
+                                'destination': destination,
+                                'distance': distance,
+                                'weight': weight,
+                                'priority': priority,
+                                'predicted_cost': ensemble_pred,
+                                'transit_time': time_pred,
+                                'reliability': reliability_pred,
+                                'model_predictions': predictions
+                            })
         
         with col2:
+            st.subheader("📈 Quick Stats")
+            
+            # Recent predictions
             if st.session_state.predictions:
-                st.subheader("🎯 AI-Powered Carrier Recommendations")
+                recent_predictions = st.session_state.predictions[-5:]
+                avg_cost = np.mean([p['predicted_cost'] for p in recent_predictions])
                 
-                # Summary metrics
-                best_cost = min(r['total_cost'] for r in st.session_state.predictions)
-                fastest_delivery = min(r['estimated_days'] for r in st.session_state.predictions)
-                highest_confidence = max(r['confidence_score'] for r in st.session_state.predictions)
-                ml_count = sum(1 for r in st.session_state.predictions if r.get('ml_adjusted', False))
+                st.metric("Recent Avg Cost", f"${avg_cost:.2f}")
+                st.metric("Total Predictions", len(st.session_state.predictions))
                 
-                metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-                with metric_col1:
-                    st.metric("💰 Best Price", f"${best_cost:.2f}")
-                with metric_col2:
-                    st.metric("⚡ Fastest", f"{fastest_delivery} day{'s' if fastest_delivery != 1 else ''}")
-                with metric_col3:
-                    st.metric("🎯 Confidence", f"{highest_confidence*100:.1f}%")
-                with metric_col4:
-                    st.metric("🤖 ML Enhanced", f"{ml_count}/{len(st.session_state.predictions)}")
-                
-                # Display results
-                for i, result in enumerate(st.session_state.predictions):
-                    if result.get('recommended', False):
-                        st.markdown(f"""
-                        <div class="recommended-card">
-                            <h3>🏆 #{result['rank']} {result['carrier']} - RECOMMENDED 
-                            {'🤖 ML Enhanced' if result.get('ml_adjusted') else '📊 Base Calc'}</h3>
-                            <p><strong>Strength:</strong> {result['strength']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"""
-                        <div class="carrier-card">
-                            <h3>{result['carrier']} {'🤖' if result.get('ml_adjusted') else '📊'}</h3>
-                            <p><strong>Strength:</strong> {result['strength']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    # Cost and details
-                    detail_col1, detail_col2 = st.columns([2, 1])
-                    with detail_col1:
-                        st.markdown(f"""
-                        <div class="cost-breakdown">
-                            <h4>💰 Cost Breakdown</h4>
-                            <ul>
-                                <li><strong>Distance:</strong> {result['distance']:.1f} miles (Zone {result['zone']})</li>
-                                <li><strong>Billable Weight:</strong> {result['billable_weight']:.1f} lbs</li>
-                                <li><strong>Base Rate:</strong> ${result['base_cost']:.2f}</li>
-                                <li><strong>Weight Cost:</strong> ${result['weight_cost']:.2f}</li>
-                                <li><strong>Distance Cost:</strong> ${result['distance_cost']:.2f}</li>
-                                <li><strong>Zone Multiplier:</strong> {result['zone_multiplier']:.2f}x</li>
-                                <li><strong>Fuel Surcharge:</strong> ${result['fuel_cost']:.2f}</li>
-                                <li><strong>Insurance:</strong> ${result['insurance_cost']:.2f}</li>
-                            </ul>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with detail_col2:
-                        st.metric("💵 Total Cost", f"${result['total_cost']:.2f}")
-                        st.metric("📅 Delivery", f"{result['estimated_days']} days")
-                        st.metric("🎯 Confidence", f"{result['confidence_score']*100:.1f}%")
-                        if result.get('ml_adjusted'):
-                            st.success("🤖 ML Enhanced")
-                        else:
-                            st.info("📊 Base Calculation")
-                    
-                    st.markdown("---")
-                
-                # Enhanced visualization
-                if len(st.session_state.predictions) > 1:
-                    st.subheader("📊 Interactive Cost Analysis")
-                    
-                    # Cost comparison chart
-                    fig1 = go.Figure()
-                    
-                    carriers = [r['carrier'] for r in st.session_state.predictions]
-                    costs = [r['total_cost'] for r in st.session_state.predictions]
-                    colors = [CARRIERS[r['carrier']]['color'] for r in st.session_state.predictions]
-                    ml_enhanced = ['🤖 ML Enhanced' if r.get('ml_adjusted') else '📊 Base Calc' for r in st.session_state.predictions]
-                    
-                    fig1.add_trace(go.Bar(
-                        x=carriers,
-                        y=costs,
-                        marker_color=colors,
-                        text=[f"${cost:.2f}<br>{ml}" for cost, ml in zip(costs, ml_enhanced)],
-                        textposition='auto',
-                        hovertemplate='<b>%{x}</b><br>Cost: $%{y:.2f}<br>%{text}<extra></extra>'
-                    ))
-                    
-                    fig1.update_layout(
-                        title="🏆 Carrier Cost Comparison",
-                        xaxis_title="Carrier",
-                        yaxis_title="Total Cost ($)",
-                        height=400,
-                        showlegend=False
-                    )
-                    
-                    st.plotly_chart(fig1, use_container_width=True)
-                    
-                    # Cost vs Delivery scatter plot
-                    fig2 = go.Figure()
-                    
-                    delivery_days = [r['estimated_days'] for r in st.session_state.predictions]
-                    confidence_scores = [r['confidence_score'] for r in st.session_state.predictions]
-                    
-                    for i, carrier in enumerate(carriers):
-                        fig2.add_trace(go.Scatter(
-                            x=[delivery_days[i]],
-                            y=[costs[i]],
-                            mode='markers+text',
-                            name=carrier,
-                            text=[carrier],
-                            textposition="top center",
-                            marker=dict(
-                                size=confidence_scores[i] * 40,
-                                color=colors[i],
-                                opacity=0.7,
-                                line=dict(width=2, color='white')
-                            ),
-                            hovertemplate=f'<b>{carrier}</b><br>Cost: ${costs[i]:.2f}<br>Delivery: {delivery_days[i]} days<br>Confidence: {confidence_scores[i]*100:.1f}%<extra></extra>'
-                        ))
-                    
-                    fig2.update_layout(
-                        title="📈 Cost vs Delivery Time Analysis (Bubble size = Confidence)",
-                        xaxis_title="Delivery Days",
-                        yaxis_title="Total Cost ($)",
-                        height=400,
-                        showlegend=False
-                    )
-                    
-                    st.plotly_chart(fig2, use_container_width=True)
+                # Show recent predictions
+                st.write("**Recent Predictions:**")
+                for pred in reversed(recent_predictions):
+                    st.write(f"• {pred['origin']} → {pred['destination']}: ${pred['predicted_cost']:.2f}")
             else:
-                st.info("👆 Enter shipment details and click 'Calculate Optimal Routes' to see AI-powered recommendations.")
-                
-                # Enhanced feature showcase
-                st.markdown("""
-                ### 🚀 Advanced System Capabilities
-                
-                **🧠 Machine Learning Models:**
-                - 🏆 **Ensemble Methods**: Combines multiple algorithms for maximum accuracy
-                - 🧠 **LSTM Neural Networks**: Deep learning for time-series cost prediction  
-                - ⚡ **XGBoost & LightGBM**: Gradient boosting for complex patterns
-                - 🔗 **Neural Networks**: Multi-layer perceptrons for non-linear relationships
-                - 🌳 **Random Forest**: Robust tree-based ensemble learning
-                
-                **💰 Real-World Cost Factors:**
-                - 🗺️ **Real Distance Calculation**: Geocoding-based distance measurement
-                - 📦 **Dimensional Weight**: Accurate billable weight calculations
-                - ⛽ **Dynamic Fuel Surcharges**: Market-responsive pricing
-                - 🏠 **Residential Fees**: Accurate delivery surcharges
-                - 🛡️ **Insurance Coverage**: Value-based protection costs
-                
-                **🎯 Intelligent Optimization:**
-                - 🏆 **Multi-Carrier Analysis**: Compare all major carriers simultaneously
-                - 📊 **Confidence Scoring**: ML-based prediction reliability
-                - 🎨 **Interactive Visualizations**: Real-time cost and delivery analysis
-                - 🤖 **Claude AI Integration**: Advanced reasoning and recommendations
-                """)
+                st.info("No predictions yet. Make your first prediction!")
     
     with tab2:
-        st.header("📊 Advanced ML Model Training")
+        st.header("🤖 Model Training & Management")
         
-        # Data source selection
-        data_source = st.radio("Choose Data Source:", 
-                              options=["Upload CSV File", "Generate Sample Data", "Use Existing Data"],
-                              horizontal=True)
+        col1, col2 = st.columns([2, 1])
         
-        if data_source == "Upload CSV File":
-            uploaded_file = st.file_uploader("Upload Training Data (CSV)", type=['csv'])
+        with col1:
+            st.subheader("🔧 Training Configuration")
             
-            if uploaded_file is not None:
-                try:
-                    data = pd.read_csv(uploaded_file)
-                    st.session_state.data = data
-                    st.success(f"✅ Data loaded successfully! Shape: {data.shape}")
-                    
-                except Exception as e:
-                    st.error(f"Error loading data: {str(e)}")
-        
-        elif data_source == "Generate Sample Data":
-            col1, col2 = st.columns(2)
-            with col1:
-                num_samples = st.number_input("Number of Samples", min_value=100, max_value=10000, value=1000)
-            with col2:
-                if st.button("🎲 Generate Data", type="primary"):
-                    with st.spinner("Generating realistic sample data..."):
-                        sample_data = generate_sample_data(num_samples)
-                        st.session_state.data = sample_data
-                        st.success(f"✅ Generated {num_samples} sample records!")
-        
-        if st.session_state.data is not None:
-            data = st.session_state.data
-            
-            # Data overview
-            st.subheader("📋 Data Overview")
-            
-            overview_col1, overview_col2, overview_col3 = st.columns(3)
-            with overview_col1:
-                st.metric("📊 Total Records", len(data))
-            with overview_col2:
-                st.metric("📈 Features", len(data.columns))
-            with overview_col3:
-                st.metric("💰 Avg Cost", f"${data.get('Total_Cost_USD', [0]).mean():.2f}" if 'Total_Cost_USD' in data.columns else "N/A")
-            
-            # Data preview
-            with st.expander("👀 Data Preview", expanded=False):
-                st.dataframe(data.head(10))
-            
-            # Data quality check
-            with st.expander("🔍 Data Quality Analysis", expanded=False):
-                st.write("**Missing Values:**")
-                missing_data = data.isnull().sum()
-                if missing_data.sum() > 0:
-                    st.dataframe(missing_data[missing_data > 0])
-                else:
-                    st.success("✅ No missing values found!")
-                
-                st.write("**Data Types:**")
-                st.dataframe(data.dtypes)
-            
-            # Model configuration
-            st.subheader("🎯 Model Configuration")
-            
-            config_col1, config_col2 = st.columns(2)
-            
-            with config_col1:
-                # Target variable selection
-                target_column = st.selectbox("🎯 Select Target Variable (Cost Column)", 
-                                           options=data.columns.tolist(),
-                                           index=list(data.columns).index('Total_Cost_USD') if 'Total_Cost_USD' in data.columns else 0)
-            
-            with config_col2:
-                # Test size
-                test_size = st.slider("📊 Test Set Size", min_value=0.1, max_value=0.5, value=0.2, step=0.05)
-            
-            # Model selection with availability checks
-            st.subheader("🤖 Select Models to Train")
-            
+            # Model selection
+            st.write("**Available Models:**")
             model_options = {
-                'random_forest': '🌳 Random Forest - Robust ensemble method',
-                'gradient_boosting': '📈 Gradient Boosting - Sequential improvement',
-                'neural_network': '🔗 Neural Network - Multi-layer perceptron'
+                'Random Forest': 'random_forest',
+                'Gradient Boosting': 'gradient_boosting', 
+                'Neural Network': 'neural_network'
             }
             
-            # Add optional models based on availability
             if XGBOOST_AVAILABLE:
-                model_options['xgboost'] = '⚡ XGBoost - Optimized gradient boosting'
-            
+                model_options['XGBoost'] = 'xgboost'
             if LIGHTGBM_AVAILABLE:
-                model_options['lightgbm'] = '💡 LightGBM - Fast gradient boosting'
+                model_options['LightGBM'] = 'lightgbm'
+            if TF_AVAILABLE:
+                model_options['LSTM Neural Network'] = 'lstm'
             
-            if TENSORFLOW_AVAILABLE:
-                model_options['lstm'] = '🧠 LSTM - Long Short-Term Memory network'
+            selected_models = st.multiselect(
+                "Select models to train:",
+                options=list(model_options.keys()),
+                default=list(model_options.keys())[:3]
+            )
             
-            # Ensemble requires at least 2 base models
-            available_base_models = ['random_forest', 'gradient_boosting']
-            if XGBOOST_AVAILABLE:
-                available_base_models.append('xgboost')
+            # Training data options
+            st.write("**Training Data:**")
+            use_sample_data = st.checkbox("Use sample synthetic data", value=True)
             
-            if len(available_base_models) >= 2:
-                model_options['ensemble'] = '🏆 Ensemble - Combines multiple models'
+            if not use_sample_data:
+                uploaded_file = st.file_uploader("Upload training data (CSV)", type="csv")
+                if uploaded_file:
+                    st.info("Custom data upload feature - would process uploaded CSV here")
             
-            selected_models = []
-            
-            for model_key, model_desc in model_options.items():
-                if st.checkbox(model_desc, key=f"model_{model_key}"):
-                    selected_models.append(model_key)
-            
-            # Training configuration
-            with st.expander("⚙️ Advanced Training Settings", expanded=False):
-                use_cross_validation = st.checkbox("🔄 Use Cross-Validation", value=True)
-                n_splits = st.number_input("CV Folds", min_value=3, max_value=10, value=5) if use_cross_validation else 5
-                random_state = st.number_input("🎲 Random State", min_value=0, max_value=1000, value=42)
-            
-            # Training button
-            if st.button("🚀 Train Selected Models", type="primary", disabled=len(selected_models) == 0):
-                if target_column and selected_models:
-                    
-                    # Validate target column
-                    if not pd.api.types.is_numeric_dtype(data[target_column]):
-                        st.error(f"Target column '{target_column}' must be numeric!")
-                        return
-                    
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    results = {}
-                    
-                    # Prepare target variable
-                    y = data[target_column].copy()
-                    
-                    # Remove rows with missing target values
-                    valid_indices = ~y.isnull()
-                    y = y[valid_indices]
-                    data_clean = data[valid_indices].copy()
-                    
-                    if len(y) < 10:
-                        st.error("Not enough valid data points for training!")
-                        return
-                    
-                    for i, model_type in enumerate(selected_models):
-                        status_text.text(f"🔄 Training {model_options[model_type]}...")
-                        
-                        try:
-                            # Create and train agent
-                            agent = AdvancedMLAgent(f"{model_type}_agent", model_type)
-                            
-                            # Prepare features
-                            features = agent.prepare_features(data_clean, is_training=True)
-                            
-                            if features.empty:
-                                st.error(f"Failed to prepare features for {model_type}")
-                                continue
-                            
-                            # Train model
-                            success = agent.train(features, y)
-                            
-                            if success:
-                                st.session_state.trained_models[model_type] = agent
-                                results[model_type] = agent.performance_metrics
-                                
-                                # Cross-validation if enabled
-                                if use_cross_validation and model_type != 'lstm':
-                                    try:
-                                        cv_scores = cross_val_score(
-                                            agent.model, 
-                                            agent.scaler.transform(features), 
-                                            y, 
-                                            cv=n_splits, 
-                                            scoring='neg_mean_absolute_error',
-                                            n_jobs=-1
-                                        )
-                                        results[model_type]['cv_mae'] = -cv_scores.mean()
-                                        results[model_type]['cv_std'] = cv_scores.std()
-                                    except:
-                                        pass
-                                
-                                st.success(f"✅ {model_options[model_type]} trained successfully!")
-                            else:
-                                st.error(f"❌ Failed to train {model_options[model_type]}")
-                                
-                        except Exception as e:
-                            st.error(f"❌ Error training {model_type}: {str(e)}")
-                        
-                        progress_bar.progress((i + 1) / len(selected_models))
-                    
-                    st.session_state.model_performance = results
-                    status_text.text("🎉 Training completed!")
-                    
-                    # Training results summary
-                    if results:
-                        st.subheader("🏆 Training Results Summary")
-                        
-                        results_df = pd.DataFrame(results).T
-                        results_df['accuracy_pct'] = results_df['accuracy'] * 100
-                        
-                        # Display results table
-                        display_columns = ['accuracy_pct', 'mae', 'rmse', 'r2']
-                        if 'cv_mae' in results_df.columns:
-                            display_columns.append('cv_mae')
-                        
-                        display_df = results_df[display_columns].round(3)
-                        display_df.columns = ['Accuracy (%)', 'MAE ($)', 'RMSE ($)', 'R² Score'] + (['CV MAE ($)'] if 'cv_mae' in results_df.columns else [])
-                        
-                        st.dataframe(display_df, use_container_width=True)
-                        
-                        # Best model identification
-                        best_model = results_df['accuracy'].idxmax()
-                        best_accuracy = results_df.loc[best_model, 'accuracy_pct']
-                        
-                        st.success(f"🏆 **Best Model**: {model_options[best_model]} with {best_accuracy:.1f}% accuracy!")
-                        
-                        # Model comparison chart
-                        fig = px.bar(
-                            x=results_df.index,
-                            y=results_df['accuracy_pct'],
-                            title="🏆 Model Performance Comparison",
-                            labels={'x': 'Model', 'y': 'Accuracy (%)'},
-                            color=results_df['accuracy_pct'],
-                            color_continuous_scale='viridis'
-                        )
-                        fig.update_layout(height=400)
-                        st.plotly_chart(fig, use_container_width=True)
+            # Train models
+            if st.button("🚀 Train Selected Models", type="primary"):
+                if not selected_models:
+                    st.warning("Please select at least one model to train.")
                 else:
-                    st.error("Please select target variable and at least one model.")
+                    # Initialize multi-agent system
+                    mas = EnhancedMultiAgentSystem()
+                    
+                    # Add selected agents
+                    for model_name in selected_models:
+                        model_type = model_options[model_name]
+                        mas.add_agent(model_name, model_type)
+                    
+                    # Train all agents
+                    st.write("🔄 Training models...")
+                    training_results = mas.train_all_agents()
+                    
+                    # Store trained models
+                    st.session_state.trained_models = mas.agents
+                    
+                    # Display results
+                    st.success("✅ Training Complete!")
+                    
+                    for model_name, success in training_results.items():
+                        if success:
+                            agent = mas.agents[model_name]
+                            metrics = agent.performance_metrics
+                            
+                            st.markdown(f"""
+                            <div class="model-performance">
+                                <h4>🎯 {model_name}</h4>
+                                <p><strong>MAE:</strong> ${metrics.get('mae', 0):.2f}</p>
+                                <p><strong>RMSE:</strong> ${metrics.get('rmse', 0):.2f}</p>
+                                <p><strong>R²:</strong> {metrics.get('r2', 0):.3f}</p>
+                                <p><strong>MAPE:</strong> {metrics.get('mape', 0):.1f}%</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.error(f"❌ {model_name} training failed")
         
-        else:
-            st.info("📁 Please select a data source to begin model training.")
+        with col2:
+            st.subheader("📊 Model Status")
             
-            # Sample data format guide
-            st.subheader("📋 Expected Data Format")
-            st.write("Your CSV should contain columns like:")
+            if st.session_state.trained_models:
+                st.write("**Trained Models:**")
+                for name, agent in st.session_state.trained_models.items():
+                    status = "✅ Ready" if agent.is_trained else "❌ Failed"
+                    st.write(f"• {name}: {status}")
+                
+                if st.button("🗑️ Clear All Models"):
+                    st.session_state.trained_models = {}
+                    st.rerun()
+            else:
+                st.info("No models trained yet.")
             
-            sample_data = pd.DataFrame({
-                'Carrier': ['UPS', 'FedEx', 'USPS', 'DHL', 'OnTrac'],
-                'Service_Type': ['ground', 'express', 'overnight', 'ground', 'express'],
-                'Package_Weight_lbs': [5.0, 3.2, 8.5, 2.1, 7.3],
-                'Distance_miles': [450, 1200, 800, 300, 650],
-                'Origin_State': ['IL', 'CA', 'NY', 'TX', 'FL'],
-                'Destination_State': ['KY', 'TX', 'FL', 'CA', 'GA'],
-                'Package_Length_in': [12, 8, 15, 10, 14],
-                'Package_Width_in': [8, 6, 10, 7, 9],
-                'Package_Height_in': [6, 4, 8, 5, 7],
-                'Declared_Value_USD': [500, 200, 1000, 150, 750],
-                'Total_Cost_USD': [25.50, 45.75, 35.20, 28.90, 32.15]
-            })
-            st.dataframe(sample_data)
+            # Library installation tips
+            st.write("**📦 Optional Libraries:**")
+            if not XGBOOST_AVAILABLE:
+                st.code("pip install xgboost")
+            if not LIGHTGBM_AVAILABLE:
+                st.code("pip install lightgbm")
+            if not TF_AVAILABLE:
+                st.code("pip install tensorflow")
+            if not ANTHROPIC_AVAILABLE:
+                st.code("pip install anthropic")
     
     with tab3:
-        st.header("🔍 Comprehensive Model Performance Analysis")
-        
-        if st.session_state.model_performance:
-            perf_df = pd.DataFrame(st.session_state.model_performance).T
-            perf_df['accuracy_pct'] = perf_df['accuracy'] * 100
-            
-            # Performance overview
-            st.subheader("📊 Performance Overview")
-            
-            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-            with metric_col1:
-                best_model = perf_df['accuracy'].idxmax()
-                st.metric("🏆 Best Model", best_model.title(), f"{perf_df.loc[best_model, 'accuracy_pct']:.1f}%")
-            
-            with metric_col2:
-                lowest_mae = perf_df['mae'].idxmin()
-                st.metric("📉 Lowest Error", lowest_mae.title(), f"${perf_df.loc[lowest_mae, 'mae']:.2f}")
-            
-            with metric_col3:
-                highest_r2 = perf_df['r2'].idxmax()
-                st.metric("📈 Best Fit", highest_r2.title(), f"{perf_df.loc[highest_r2, 'r2']:.3f}")
-            
-            with metric_col4:
-                avg_accuracy = perf_df['accuracy_pct'].mean()
-                st.metric("📊 Avg Accuracy", f"{avg_accuracy:.1f}%", f"±{perf_df['accuracy_pct'].std():.1f}%")
-            
-            # Detailed performance visualization
-            st.subheader("📈 Detailed Performance Metrics")
-            
-            # Multi-metric comparison
-            fig = make_subplots(
-                rows=2, cols=2,
-                subplot_titles=('🎯 Accuracy (%)', '📉 Mean Absolute Error ($)', '📊 R² Score', '📈 RMSE ($)'),
-                specs=[[{"secondary_y": False}, {"secondary_y": False}],
-                       [{"secondary_y": False}, {"secondary_y": False}]]
-            )
-            
-            models = perf_df.index.tolist()
-            colors = px.colors.qualitative.Set3[:len(models)]
-            
-            # Accuracy
-            fig.add_trace(
-                go.Bar(x=models, y=perf_df['accuracy_pct'], marker_color=colors, 
-                       text=[f"{x:.1f}%" for x in perf_df['accuracy_pct']], textposition='auto'),
-                row=1, col=1
-            )
-            
-            # MAE
-            fig.add_trace(
-                go.Bar(x=models, y=perf_df['mae'], marker_color=colors,
-                       text=[f"${x:.2f}" for x in perf_df['mae']], textposition='auto'),
-                row=1, col=2
-            )
-            
-            # R²
-            fig.add_trace(
-                go.Bar(x=models, y=perf_df['r2'], marker_color=colors,
-                       text=[f"{x:.3f}" for x in perf_df['r2']], textposition='auto'),
-                row=2, col=1
-            )
-            
-            # RMSE
-            fig.add_trace(
-                go.Bar(x=models, y=perf_df['rmse'], marker_color=colors,
-                       text=[f"${x:.2f}" for x in perf_df['rmse']], textposition='auto'),
-                row=2, col=2
-            )
-            
-            fig.update_layout(height=600, showlegend=False, title_text="Model Performance Comparison")
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Performance ranking
-            st.subheader("🏆 Model Rankings")
-            
-            ranking_metrics = ['accuracy_pct', 'mae', 'r2', 'rmse']
-            ranking_data = []
-            
-            for metric in ranking_metrics:
-                if metric in ['mae', 'rmse']:  # Lower is better
-                    ranked = perf_df.sort_values(metric).index.tolist()
-                else:  # Higher is better
-                    ranked = perf_df.sort_values(metric, ascending=False).index.tolist()
-                
-                for i, model in enumerate(ranked):
-                    ranking_data.append({
-                        'Metric': metric.replace('_', ' ').title(),
-                        'Rank': i + 1,
-                        'Model': model.title(),
-                        'Value': perf_df.loc[model, metric]
-                    })
-            
-            ranking_df = pd.DataFrame(ranking_data)
-            
-            # Create ranking heatmap
-            pivot_ranking = ranking_df.pivot(index='Model', columns='Metric', values='Rank')
-            
-            fig_heatmap = px.imshow(
-                pivot_ranking.values,
-                x=pivot_ranking.columns,
-                y=pivot_ranking.index,
-                color_continuous_scale='RdYlGn_r',
-                title="🎯 Model Ranking Heatmap (1=Best, Higher=Worse)",
-                text_auto=True
-            )
-            fig_heatmap.update_layout(height=400)
-            st.plotly_chart(fig_heatmap, use_container_width=True)
-            
-            # Detailed metrics table
-            st.subheader("📋 Detailed Performance Table")
-            
-            display_df = perf_df.copy()
-            display_df = display_df.round(4)
-            
-            # Add CV results if available
-            if 'cv_mae' in display_df.columns:
-                display_df['cv_mae'] = display_df['cv_mae'].round(2)
-                display_df['cv_std'] = display_df['cv_std'].round(2)
-            
-            # Format for display
-            formatted_df = display_df[['accuracy_pct', 'mae', 'rmse', 'r2']].copy()
-            formatted_df.columns = ['Accuracy (%)', 'MAE ($)', 'RMSE ($)', 'R² Score']
-            
-            # Add CV columns if available
-            if 'cv_mae' in display_df.columns:
-                formatted_df['CV MAE ($)'] = display_df['cv_mae']
-                formatted_df['CV Std'] = display_df['cv_std']
-            
-            # Color code the dataframe
-            st.dataframe(
-                formatted_df.style.format({
-                    'Accuracy (%)': '{:.2f}%',
-                    'MAE ($)': '${:.2f}',
-                    'RMSE ($)': '${:.2f}',
-                    'R² Score': '{:.3f}',
-                    'CV MAE ($)': '${:.2f}',
-                    'CV Std': '{:.3f}'
-                }).background_gradient(subset=['Accuracy (%)', 'R² Score'], cmap='Greens')
-                .background_gradient(subset=['MAE ($)', 'RMSE ($)'], cmap='Reds_r'),
-                use_container_width=True
-            )
-            
-            # Model insights
-            st.subheader("🧠 Model Insights & Recommendations")
-            
-            insights_col1, insights_col2 = st.columns(2)
-            
-            with insights_col1:
-                st.markdown("### 🎯 Best Performers")
-                
-                best_accuracy = perf_df['accuracy'].idxmax()
-                best_mae = perf_df['mae'].idxmin()
-                best_r2 = perf_df['r2'].idxmax()
-                
-                st.success(f"🏆 **Highest Accuracy**: {best_accuracy.title()} ({perf_df.loc[best_accuracy, 'accuracy_pct']:.1f}%)")
-                st.success(f"📉 **Lowest Error**: {best_mae.title()} (${perf_df.loc[best_mae, 'mae']:.2f} MAE)")
-                st.success(f"📊 **Best Fit**: {best_r2.title()} ({perf_df.loc[best_r2, 'r2']:.3f} R²)")
-                
-                # Overall recommendation
-                if best_accuracy == best_mae == best_r2:
-                    st.info(f"🌟 **Overall Champion**: {best_accuracy.title()} excels in all metrics!")
-                else:
-                    # Calculate overall score
-                    normalized_scores = perf_df.copy()
-                    normalized_scores['accuracy_norm'] = (normalized_scores['accuracy'] - normalized_scores['accuracy'].min()) / (normalized_scores['accuracy'].max() - normalized_scores['accuracy'].min())
-                    normalized_scores['mae_norm'] = 1 - ((normalized_scores['mae'] - normalized_scores['mae'].min()) / (normalized_scores['mae'].max() - normalized_scores['mae'].min()))
-                    normalized_scores['r2_norm'] = (normalized_scores['r2'] - normalized_scores['r2'].min()) / (normalized_scores['r2'].max() - normalized_scores['r2'].min())
-                    
-                    normalized_scores['overall_score'] = (normalized_scores['accuracy_norm'] + normalized_scores['mae_norm'] + normalized_scores['r2_norm']) / 3
-                    overall_best = normalized_scores['overall_score'].idxmax()
-                    
-                    st.info(f"🌟 **Overall Best**: {overall_best.title()} (balanced performance)")
-            
-            with insights_col2:
-                st.markdown("### 📈 Performance Analysis")
-                
-                # Performance distribution
-                accuracy_range = perf_df['accuracy_pct'].max() - perf_df['accuracy_pct'].min()
-                mae_range = perf_df['mae'].max() - perf_df['mae'].min()
-                
-                if accuracy_range < 5:
-                    st.info("🔄 **Close Competition**: All models perform similarly")
-                else:
-                    st.warning("📊 **Performance Gap**: Significant difference between models")
-                
-                # Model complexity vs performance
-                complexity_order = ['random_forest', 'gradient_boosting', 'xgboost', 'lightgbm', 'neural_network', 'lstm', 'ensemble']
-                
-                if 'ensemble' in perf_df.index and perf_df.loc['ensemble', 'accuracy'] > perf_df['accuracy'].mean():
-                    st.success("🏆 **Ensemble Advantage**: Combined models outperform individual ones")
-                
-                if 'lstm' in perf_df.index:
-                    if perf_df.loc['lstm', 'accuracy'] > perf_df.drop('lstm')['accuracy'].mean():
-                        st.success("🧠 **Deep Learning Bonus**: LSTM captures complex patterns")
-                    else:
-                        st.info("📊 **Traditional ML**: Simpler models work well for this data")
-        
-        else:
-            st.info("🤖 Train some models first to see comprehensive performance analysis.")
-            
-            # Performance interpretation guide
-            st.markdown("""
-            ### 📚 Performance Metrics Guide
-            
-            **🎯 Accuracy**: Percentage of predictions within acceptable range
-            - 90%+ = Excellent
-            - 80-90% = Good  
-            - 70-80% = Fair
-            - <70% = Needs improvement
-            
-            **📉 MAE (Mean Absolute Error)**: Average prediction error in dollars
-            - Lower is better
-            - Should be <10% of average cost
-            
-            **📊 R² Score**: How well the model explains cost variation
-            - 1.0 = Perfect fit
-            - 0.8+ = Very good
-            - 0.6-0.8 = Good
-            - <0.6 = Poor fit
-            
-            **📈 RMSE**: Root Mean Square Error, penalizes large errors
-            - Similar to MAE but more sensitive to outliers
-            """)
-    
-    with tab4:
-        st.header("📈 Advanced Analytics Dashboard")
+        st.header("📊 Analytics & Performance")
         
         if st.session_state.predictions:
-            predictions = st.session_state.predictions
+            # Prediction history
+            df = pd.DataFrame(st.session_state.predictions)
             
-            # Analytics overview
-            st.subheader("📊 Route Optimization Analysis")
-            
-            carriers = [p['carrier'] for p in predictions]
-            total_costs = [p['total_cost'] for p in predictions]
-            delivery_days = [p['estimated_days'] for p in predictions]
-            confidence_scores = [p['confidence_score'] for p in predictions]
-            distances = [p['distance'] for p in predictions]
-            zones = [p['zone'] for p in predictions]
-            
-            # Key insights
-            insight_col1, insight_col2, insight_col3, insight_col4 = st.columns(4)
-            
-            with insight_col1:
-                cost_savings = max(total_costs) - min(total_costs)
-                st.metric("💰 Max Savings", f"${cost_savings:.2f}", f"{(cost_savings/max(total_costs)*100):.1f}%")
-            
-            with insight_col2:
-                time_advantage = max(delivery_days) - min(delivery_days)
-                st.metric("⚡ Time Advantage", f"{time_advantage} days", f"{(time_advantage/max(delivery_days)*100):.1f}%")
-            
-            with insight_col3:
-                avg_confidence = np.mean(confidence_scores)
-                st.metric("🎯 Avg Confidence", f"{avg_confidence*100:.1f}%", f"±{np.std(confidence_scores)*100:.1f}%")
-            
-            with insight_col4:
-                ml_enhanced = sum(1 for p in predictions if p.get('ml_adjusted', False))
-                st.metric("🤖 ML Enhanced", f"{ml_enhanced}/{len(predictions)}", f"{(ml_enhanced/len(predictions)*100):.0f}%")
-            
-            # Comprehensive cost analysis
-            st.subheader("💰 Cost Structure Analysis")
-            
-            # Cost breakdown pie chart
             col1, col2 = st.columns(2)
             
             with col1:
-                # Average cost breakdown
-                avg_breakdown = {
-                    'Base Cost': np.mean([p['base_cost'] for p in predictions]),
-                    'Weight Cost': np.mean([p['weight_cost'] for p in predictions]),
-                    'Distance Cost': np.mean([p['distance_cost'] for p in predictions]),
-                    'Fuel Surcharge': np.mean([p['fuel_cost'] for p in predictions]),
-                    'Insurance': np.mean([p['insurance_cost'] for p in predictions])
-                }
+                # Cost distribution
+                fig = px.histogram(df, x='predicted_cost', title="Cost Distribution", nbins=20)
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
                 
-                fig_pie = go.Figure(data=[go.Pie(
-                    labels=list(avg_breakdown.keys()),
-                    values=list(avg_breakdown.values()),
-                    hole=0.3,
-                    textinfo='label+percent',
-                    textposition='outside'
-                )])
-                
-                fig_pie.update_layout(
-                    title="Average Cost Breakdown",
-                    height=400,
-                    showlegend=True
-                )
-                st.plotly_chart(fig_pie, use_container_width=True)
+                # Distance vs Cost
+                fig2 = px.scatter(df, x='distance', y='predicted_cost', color='priority',
+                                 title="Distance vs Cost by Priority", size='weight')
+                fig2.update_layout(height=400)
+                st.plotly_chart(fig2, use_container_width=True)
             
             with col2:
-                # Cost vs delivery performance matrix
-                fig_matrix = go.Figure()
+                # Route frequency
+                route_counts = df['origin'].value_counts().head(10)
+                fig3 = px.bar(x=route_counts.values, y=route_counts.index, orientation='h',
+                             title="Top Origin Cities")
+                fig3.update_layout(height=400)
+                st.plotly_chart(fig3, use_container_width=True)
                 
-                for i, carrier in enumerate(carriers):
-                    fig_matrix.add_trace(go.Scatter(
-                        x=[delivery_days[i]],
-                        y=[total_costs[i]],
-                        mode='markers+text',
-                        name=carrier,
-                        text=[carrier],
-                        textposition="middle center",
-                        marker=dict(
-                            size=confidence_scores[i] * 50,
-                            color=CARRIERS[carrier]['color'],
-                            opacity=0.8,
-                            line=dict(width=3, color='white')
-                        ),
-                        hovertemplate=f'<b>{carrier}</b><br>Cost: ${total_costs[i]:.2f}<br>Days: {delivery_days[i]}<br>Zone: {zones[i]}<br>Distance: {distances[i]:.0f} mi<br>Confidence: {confidence_scores[i]*100:.1f}%<extra></extra>'
-                    ))
+                # Priority distribution
+                priority_counts = df['priority'].value_counts()
+                fig4 = px.pie(values=priority_counts.values, names=priority_counts.index,
+                             title="Priority Distribution")
+                fig4.update_layout(height=400)
+                st.plotly_chart(fig4, use_container_width=True)
+            
+            # Model performance comparison
+            if st.session_state.trained_models:
+                st.subheader("🏆 Model Performance Comparison")
                 
-                fig_matrix.update_layout(
-                    title="Performance Matrix: Cost vs Speed",
-                    xaxis_title="Delivery Days",
-                    yaxis_title="Total Cost ($)",
-                    height=400,
-                    showlegend=False
-                )
+                performance_data = []
+                for name, agent in st.session_state.trained_models.items():
+                    if agent.is_trained and agent.performance_metrics:
+                        performance_data.append({
+                            'Model': name,
+                            'MAE': agent.performance_metrics.get('mae', 0),
+                            'RMSE': agent.performance_metrics.get('rmse', 0),
+                            'R²': agent.performance_metrics.get('r2', 0),
+                            'MAPE': agent.performance_metrics.get('mape', 0)
+                        })
                 
-                # Add quadrant lines
-                avg_cost = np.mean(total_costs)
-                avg_days = np.mean(delivery_days)
-                
-                fig_matrix.add_hline(y=avg_cost, line_dash="dash", line_color="gray", opacity=0.5)
-                fig_matrix.add_vline(x=avg_days, line_dash="dash", line_color="gray", opacity=0.5)
-                
-                # Add quadrant labels
-                fig_matrix.add_annotation(x=min(delivery_days), y=max(total_costs), text="Expensive & Slow", showarrow=False, bgcolor="rgba(255,0,0,0.1)")
-                fig_matrix.add_annotation(x=max(delivery_days), y=min(total_costs), text="Cheap & Slow", showarrow=False, bgcolor="rgba(255,255,0,0.1)")
-                fig_matrix.add_annotation(x=min(delivery_days), y=min(total_costs), text="Fast & Cheap", showarrow=False, bgcolor="rgba(0,255,0,0.1)")
-                fig_matrix.add_annotation(x=max(delivery_days), y=max(total_costs), text="Expensive & Fast", showarrow=False, bgcolor="rgba(255,165,0,0.1)")
-                
-                st.plotly_chart(fig_matrix, use_container_width=True)
+                if performance_data:
+                    perf_df = pd.DataFrame(performance_data)
+                    
+                    # Performance metrics chart
+                    fig5 = go.Figure()
+                    
+                    fig5.add_trace(go.Bar(name='MAE', x=perf_df['Model'], y=perf_df['MAE']))
+                    fig5.add_trace(go.Bar(name='RMSE', x=perf_df['Model'], y=perf_df['RMSE']))
+                    
+                    fig5.update_layout(
+                        title="Model Performance Comparison (Lower is Better)",
+                        barmode='group',
+                        height=400
+                    )
+                    st.plotly_chart(fig5, use_container_width=True)
+                    
+                    # Performance table
+                    st.dataframe(perf_df, use_container_width=True)
             
-            # Detailed carrier comparison
-            st.subheader("🏢 Carrier Performance Analysis")
+            # Prediction statistics
+            st.subheader("📈 Prediction Statistics")
             
-            # Create comprehensive comparison table
-            comparison_data = []
-            for p in predictions:
-                comparison_data.append({
-                    'Carrier': p['carrier'],
-                    'Total Cost': f"${p['total_cost']:.2f}",
-                    'Delivery Days': p['estimated_days'],
-                    'Distance (mi)': f"{p['distance']:.0f}",
-                    'Zone': p['zone'],
-                    'Weight Cost': f"${p['weight_cost']:.2f}",
-                    'Fuel Cost': f"${p['fuel_cost']:.2f}",
-                    'Confidence': f"{p['confidence_score']*100:.1f}%",
-                    'Strength': p['strength'],
-                    'ML Enhanced': '🤖' if p.get('ml_adjusted') else '📊'
-                })
+            col_a, col_b, col_c, col_d = st.columns(4)
             
-            comparison_df = pd.DataFrame(comparison_data)
-            st.dataframe(comparison_df, use_container_width=True)
-            
-            # Performance insights
-            st.subheader("🧠 Smart Insights")
-            
-            insights = []
-            
-            # Best value analysis
-            best_value_idx = np.argmin([c/d for c, d in zip(total_costs, delivery_days)])
-            insights.append(f"🏆 **Best Value**: {carriers[best_value_idx]} offers the best cost-to-speed ratio")
-            
-            # Speed vs cost trade-off
-            fastest_carrier = carriers[np.argmin(delivery_days)]
-            cheapest_carrier = carriers[np.argmin(total_costs)]
-            
-            if fastest_carrier != cheapest_carrier:
-                fastest_cost = total_costs[np.argmin(delivery_days)]
-                cheapest_cost = min(total_costs)
-                premium = fastest_cost - cheapest_cost
-                insights.append(f"⚡ **Speed Premium**: {fastest_carrier} charges ${premium:.2f} extra for fastest delivery")
-            
-            # Distance efficiency
-            if len(set(distances)) > 1:  # Multiple distances
-                distance_efficiency = [(c-min(total_costs))/d for c, d in zip(total_costs, distances)]
-                most_efficient_idx = np.argmin(distance_efficiency)
-                insights.append(f"🗺️ **Distance Efficient**: {carriers[most_efficient_idx]} handles long distances most cost-effectively")
-            
-            # Confidence analysis
-            most_confident_idx = np.argmax(confidence_scores)
-            if confidence_scores[most_confident_idx] > 0.9:
-                insights.append(f"🎯 **Most Reliable**: {carriers[most_confident_idx]} has highest prediction confidence ({confidence_scores[most_confident_idx]*100:.1f}%)")
-            
-            # ML enhancement impact
-            ml_enhanced_count = sum(1 for p in predictions if p.get('ml_adjusted', False))
-            if ml_enhanced_count > 0:
-                insights.append(f"🤖 **AI Advantage**: {ml_enhanced_count} carriers benefit from ML-enhanced pricing")
-            
-            for insight in insights:
-                st.info(insight)
-            
-            # Advanced visualizations
-            st.subheader("📊 Advanced Analytics")
-            
-            # Multi-dimensional analysis
-            fig_radar = go.Figure()
-            
-            # Normalize metrics for radar chart
-            normalized_costs = [(max(total_costs) - c) / (max(total_costs) - min(total_costs)) for c in total_costs]  # Inverted: higher is better
-            normalized_speed = [(max(delivery_days) - d) / (max(delivery_days) - min(delivery_days)) for d in delivery_days]  # Inverted: higher is better
-            normalized_confidence = confidence_scores
-            
-            for i, carrier in enumerate(carriers):
-                fig_radar.add_trace(go.Scatterpolar(
-                    r=[normalized_costs[i], normalized_speed[i], normalized_confidence[i]],
-                    theta=['Cost Efficiency', 'Speed', 'Confidence'],
-                    fill='toself',
-                    name=carrier,
-                    line_color=CARRIERS[carrier]['color']
-                ))
-            
-            fig_radar.update_layout(
-                polar=dict(
-                    radialaxis=dict(
-                        visible=True,
-                        range=[0, 1]
-                    )),
-                title="Carrier Performance Radar",
-                height=500
-            )
-            
-            st.plotly_chart(fig_radar, use_container_width=True)
-            
-            # Optimization recommendations
-            st.subheader("💡 Optimization Recommendations")
-            
-            recommendations = []
-            
-            # Budget-conscious recommendation
-            cheapest_idx = np.argmin(total_costs)
-            recommendations.append({
-                'Scenario': '💰 Budget-Conscious',
-                'Recommendation': carriers[cheapest_idx],
-                'Cost': f"${total_costs[cheapest_idx]:.2f}",
-                'Days': f"{delivery_days[cheapest_idx]} days",
-                'Reason': f"Lowest cost option, saves ${max(total_costs) - total_costs[cheapest_idx]:.2f}"
-            })
-            
-            # Time-sensitive recommendation
-            fastest_idx = np.argmin(delivery_days)
-            recommendations.append({
-                'Scenario': '⚡ Time-Sensitive',
-                'Recommendation': carriers[fastest_idx],
-                'Cost': f"${total_costs[fastest_idx]:.2f}",
-                'Days': f"{delivery_days[fastest_idx]} days",
-                'Reason': f"Fastest delivery, {max(delivery_days) - delivery_days[fastest_idx]} days faster"
-            })
-            
-            # Balanced recommendation
-            balanced_scores = [(1-((c-min(total_costs))/(max(total_costs)-min(total_costs)))) + 
-                              (1-((d-min(delivery_days))/(max(delivery_days)-min(delivery_days)))) + 
-                              conf for c, d, conf in zip(total_costs, delivery_days, confidence_scores)]
-            balanced_idx = np.argmax(balanced_scores)
-            recommendations.append({
-                'Scenario': '⚖️ Balanced',
-                'Recommendation': carriers[balanced_idx],
-                'Cost': f"${total_costs[balanced_idx]:.2f}",
-                'Days': f"{delivery_days[balanced_idx]} days",
-                'Reason': "Best overall balance of cost, speed, and reliability"
-            })
-            
-            # High-confidence recommendation
-            if max(confidence_scores) > 0.9:
-                confident_idx = np.argmax(confidence_scores)
-                recommendations.append({
-                    'Scenario': '🎯 High Confidence',
-                    'Recommendation': carriers[confident_idx],
-                    'Cost': f"${total_costs[confident_idx]:.2f}",
-                    'Days': f"{delivery_days[confident_idx]} days",
-                    'Reason': f"Highest prediction confidence ({confidence_scores[confident_idx]*100:.1f}%)"
-                })
-            
-            rec_df = pd.DataFrame(recommendations)
-            st.table(rec_df)
+            with col_a:
+                st.metric("Total Predictions", len(df))
+            with col_b:
+                st.metric("Average Cost", f"${df['predicted_cost'].mean():.2f}")
+            with col_c:
+                st.metric("Average Distance", f"{df['distance'].mean():.0f} mi")
+            with col_d:
+                st.metric("Average Weight", f"{df['weight'].mean():.0f} lbs")
         
         else:
-            st.info("📊 Calculate some routes first to see advanced analytics.")
-            
-            # Analytics preview
-            st.markdown("""
-            ### 📈 Available Analytics
-            
-            **📊 Cost Structure Analysis:**
-            - Detailed cost breakdowns by component
-            - Average cost distribution across carriers
-            - Cost efficiency comparisons
-            
-            **🎯 Performance Matrix:**
-            - Cost vs delivery time optimization
-            - Carrier positioning analysis
-            - Performance quadrant identification
-            
-            **🧠 Smart Insights:**
-            - Best value recommendations
-            - Speed premium analysis
-            - Distance efficiency metrics
-            - ML enhancement impact
-            
-            **💡 Scenario-Based Recommendations:**
-            - Budget-conscious options
-            - Time-sensitive solutions
-            - Balanced approaches
-            - High-confidence predictions
-            
-            **📊 Advanced Visualizations:**
-            - Multi-dimensional radar charts
-            - Interactive performance matrices
-            - Comparative analysis tools
-            """)
+            st.info("📊 No prediction data available yet. Make some predictions first!")
+    
+    with tab4:
+        st.header("ℹ️ About the System")
+        
+        st.markdown("""
+        ### 🚚 Advanced Lane Optimization System v14
+        
+        This sophisticated system uses machine learning and AI to optimize shipping costs and routes.
+        
+        #### 🔧 **Core Features:**
+        - **Multi-Agent ML System**: Multiple algorithms working together
+        - **Real-time Predictions**: Instant cost and time estimates
+        - **Claude AI Integration**: Intelligent insights and recommendations
+        - **Advanced Analytics**: Comprehensive performance tracking
+        - **Flexible Architecture**: Support for multiple ML libraries
+        
+        #### 🤖 **Supported Models:**
+        - **Random Forest**: Ensemble decision trees
+        - **Gradient Boosting**: Iterative improvement algorithm
+        - **Neural Networks**: Deep learning with multiple layers
+        - **XGBoost**: Extreme gradient boosting (if installed)
+        - **LightGBM**: Efficient gradient boosting (if installed)
+        - **LSTM**: Long short-term memory networks (if TensorFlow installed)
+        
+        #### 📊 **Input Features:**
+        - Distance between origin and destination
+        - Shipment weight and priority level
+        - Time-based factors (hour, day, month)
+        - Seasonal adjustments and interactions
+        
+        #### 🎯 **Optimization Targets:**
+        - Shipping cost minimization
+        - Transit time optimization
+        - Reliability maximization
+        - Risk mitigation strategies
+        
+        #### 🔐 **Claude AI Integration:**
+        - Intelligent route analysis
+        - Cost optimization suggestions
+        - Risk assessment and mitigation
+        - Alternative routing recommendations
+        
+        #### 📦 **Installation Requirements:**
+        ```bash
+        # Core requirements
+        pip install streamlit pandas numpy scikit-learn plotly
+        
+        # Optional enhancements
+        pip install tensorflow xgboost lightgbm anthropic geopy
+        ```
+        
+        #### 🚀 **Getting Started:**
+        1. **Train Models**: Go to Model Training tab and train your preferred algorithms
+        2. **Make Predictions**: Use the Optimization tab to get cost estimates
+        3. **Analyze Results**: View performance metrics in Analytics tab
+        4. **Configure Claude**: Add API key for AI insights
+        
+        #### 💡 **Use Cases:**
+        - Logistics companies optimizing shipping routes
+        - E-commerce platforms calculating shipping costs
+        - Supply chain management and planning
+        - Transportation cost analysis and forecasting
+        
+        ---
+        
+        **Built with ❤️ using Streamlit, scikit-learn, and Claude AI**
+        """)
 
 if __name__ == "__main__":
     main()
