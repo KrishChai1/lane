@@ -11,17 +11,23 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.metrics import mean_absolute_error, r2_score
-import warnings
 from datetime import datetime, timedelta
 import random
 import json
 from typing import Dict, List, Tuple, Optional
+import warnings
 
-# Suppress warnings for cleaner output
+# Optional sklearn imports - graceful degradation if not available
+try:
+    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import LabelEncoder, StandardScaler
+    from sklearn.metrics import mean_absolute_error, r2_score
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+
+# Suppress warnings
 warnings.filterwarnings('ignore')
 
 # ============================================================================
@@ -1130,7 +1136,8 @@ def display_route_optimizer():
                     
                     with col2:
                         st.metric("Transit Time", f"{row['Transit']} days")
-                        est_delivery = (datetime.now() + timedelta(days=row['Transit']))
+                        transit_days_int = int(row['Transit']) if pd.notna(row['Transit']) else 1
+                        est_delivery = datetime.now() + timedelta(days=transit_days_int)
                         st.caption(f"Est: {est_delivery.strftime('%b %d')}")
                     
                     with col3:
