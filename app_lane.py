@@ -1,4 +1,4 @@
-import streamlit as st
+ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -24,89 +24,54 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Enhanced CSS for professional UI
+# Enhanced CSS for professional UI - NO SPACING
 st.markdown("""
 <style>
-    /* Remove padding between sections */
+    /* Remove ALL padding between sections */
     .block-container {
         padding-top: 1rem;
         padding-bottom: 0rem;
         max-width: 100%;
     }
     
-    /* Header styling */
+    .main {
+        padding: 0;
+    }
+    
+    /* Compact header */
     .main-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1.5rem;
+        padding: 1rem;
         border-radius: 15px;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
     
-    /* Metric cards */
-    .metric-card {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        padding: 1rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        border-left: 4px solid #667eea;
-        transition: transform 0.2s;
+    /* Remove spacing between elements */
+    .element-container {
+        margin: 0 !important;
+        padding: 0 !important;
     }
     
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    div[data-testid="stVerticalBlock"] > div:has(> div.element-container) {
+        gap: 0.3rem !important;
     }
     
-    /* Alert boxes */
-    .alert-success {
-        background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
-        padding: 1rem;
-        border-radius: 10px;
-        color: #0c5460;
-        margin: 0.5rem 0;
-    }
-    
-    .alert-warning {
-        background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
-        padding: 1rem;
-        border-radius: 10px;
-        color: #856404;
-        margin: 0.5rem 0;
-    }
-    
-    .alert-danger {
-        background: linear-gradient(135deg, #fab1a0 0%, #ff7675 100%);
-        padding: 1rem;
-        border-radius: 10px;
-        color: #721c24;
-        margin: 0.5rem 0;
-    }
-    
-    /* Recommendations box */
-    .recommendation-box {
-        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-        padding: 1.2rem;
-        border-radius: 12px;
-        margin: 1rem 0;
-        box-shadow: 0 3px 6px rgba(0,0,0,0.08);
-    }
-    
-    /* Tab styling */
+    /* Compact tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0px;
         background: linear-gradient(90deg, #f5f5f5 0%, #e0e0e0 100%);
-        padding: 0.5rem;
+        padding: 0.3rem;
         border-radius: 10px;
     }
     
     .stTabs [data-baseweb="tab"] {
-        height: 45px;
-        padding-left: 20px;
-        padding-right: 20px;
+        height: 40px;
+        padding-left: 15px;
+        padding-right: 15px;
         background: white;
         border-radius: 8px;
-        margin: 0 2px;
+        margin: 0 1px;
         font-weight: 500;
     }
     
@@ -115,66 +80,102 @@ st.markdown("""
         color: white;
     }
     
-    /* Remove extra spacing */
-    .element-container {
-        margin: 0;
-        padding: 0;
-    }
-    
-    div[data-testid="stVerticalBlock"] > div:has(> div.element-container) {
-        gap: 0.5rem;
-    }
-    
-    /* AI Assistant message styling */
-    .ai-message {
-        background: linear-gradient(135deg, #e0f7fa 0%, #e1bee7 100%);
-        padding: 1rem;
+    /* Metric cards */
+    .metric-card {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 0.8rem;
         border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-left: 4px solid #667eea;
+        transition: transform 0.2s;
+    }
+    
+    /* Alert boxes */
+    .alert-success {
+        background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+        padding: 0.8rem;
+        border-radius: 10px;
+        color: #0c5460;
+        margin: 0.3rem 0;
+    }
+    
+    .alert-warning {
+        background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
+        padding: 0.8rem;
+        border-radius: 10px;
+        color: #856404;
+        margin: 0.3rem 0;
+    }
+    
+    .alert-danger {
+        background: linear-gradient(135deg, #fab1a0 0%, #ff7675 100%);
+        padding: 0.8rem;
+        border-radius: 10px;
+        color: #721c24;
+        margin: 0.3rem 0;
+    }
+    
+    /* Recommendations box */
+    .recommendation-box {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        padding: 1rem;
+        border-radius: 12px;
         margin: 0.5rem 0;
-        border-left: 3px solid #667eea;
+        box-shadow: 0 3px 6px rgba(0,0,0,0.08);
     }
     
     /* Insight cards */
     .insight-card {
         background: white;
-        padding: 1rem;
+        padding: 0.8rem;
         border-radius: 10px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        margin: 0.5rem 0;
+        margin: 0.3rem 0;
         border-top: 3px solid #667eea;
     }
     
-    /* Success badge */
+    /* Badges */
     .success-badge {
         background: #10b981;
         color: white;
-        padding: 0.3rem 0.8rem;
+        padding: 0.2rem 0.6rem;
         border-radius: 20px;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         font-weight: bold;
         display: inline-block;
     }
     
-    /* Warning badge */
     .warning-badge {
         background: #f59e0b;
         color: white;
-        padding: 0.3rem 0.8rem;
+        padding: 0.2rem 0.6rem;
         border-radius: 20px;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         font-weight: bold;
         display: inline-block;
     }
     
-    /* Danger badge */
     .danger-badge {
         background: #ef4444;
         color: white;
-        padding: 0.3rem 0.8rem;
+        padding: 0.2rem 0.6rem;
         border-radius: 20px;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         font-weight: bold;
         display: inline-block;
+    }
+    
+    /* Reduce all spacing */
+    .stMetric {
+        padding: 0 !important;
+    }
+    
+    div[data-testid="metric-container"] {
+        padding: 0.5rem !important;
+    }
+    
+    .stButton > button {
+        width: 100%;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -182,9 +183,9 @@ st.markdown("""
 # Compact Header
 st.markdown("""
 <div class="main-header">
-    <h1 style="color: white; margin: 0; font-size: 2rem;">🚚 Lane Optimization Intelligence Platform</h1>
-    <p style="color: white; opacity: 0.9; margin: 0; font-size: 0.9rem;">
-        AI-Powered Transportation Analytics • Real-Time Optimization • Predictive Intelligence
+    <h2 style="color: white; margin: 0;">🚚 Lane Optimization Intelligence Platform</h2>
+    <p style="color: white; opacity: 0.9; margin: 0; font-size: 0.85rem;">
+        AI-Powered Analytics • Real-Time Optimization • Predictive Intelligence • Cost Reduction
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -247,12 +248,106 @@ def calculate_distance(city1, city2):
     c = 2 * np.arcsin(np.sqrt(a))
     return R * c
 
+def calculate_shipping_cost(origin, destination, weight, carrier, service_type='LTL', 
+                           equipment_type='Dry Van', accessorials=[], urgency='Standard'):
+    """Calculate detailed shipping cost with all factors"""
+    
+    distance = calculate_distance(origin, destination)
+    
+    # Base rates by carrier
+    carrier_rates = {
+        'UPS': 2.5, 'FedEx': 2.6, 'USPS': 2.2, 'DHL': 2.8,
+        'OnTrac': 2.0, 'XPO': 2.3, 'SAIA': 2.1, 'Old Dominion': 2.4,
+        'YRC': 2.2, 'Estes': 2.1
+    }
+    
+    base_rate = carrier_rates.get(carrier, 2.5)
+    
+    # Service type adjustment
+    if service_type == 'TL' and weight > 10000:
+        base_rate *= 0.85
+    elif service_type == 'Partial':
+        base_rate *= 0.95
+    
+    # Equipment type adjustment
+    equipment_adjustments = {
+        'Dry Van': 1.0,
+        'Reefer': 1.25,
+        'Flatbed': 1.15,
+        'Step Deck': 1.20,
+        'Conestoga': 1.18
+    }
+    base_rate *= equipment_adjustments.get(equipment_type, 1.0)
+    
+    # Urgency adjustment
+    urgency_adjustments = {
+        'Standard': 1.0,
+        'Priority': 1.25,
+        'Express': 1.50,
+        'Same Day': 2.0
+    }
+    base_rate *= urgency_adjustments.get(urgency, 1.0)
+    
+    # Calculate components
+    line_haul = base_rate * distance * (1 + weight/10000)
+    fuel_surcharge = line_haul * 0.20
+    
+    # Accessorial charges
+    accessorial_costs = {
+        'Liftgate': 75,
+        'Inside Delivery': 100,
+        'Residential': 50,
+        'Limited Access': 75,
+        'Hazmat': 200,
+        'Team Driver': 500,
+        'White Glove': 300
+    }
+    
+    total_accessorials = sum(accessorial_costs.get(a, 0) for a in accessorials)
+    
+    # Additional charges
+    if weight > 5000 and 'Liftgate' not in accessorials:
+        total_accessorials += 75
+    if distance > 1000:
+        total_accessorials += 100
+    
+    total_cost = line_haul + fuel_surcharge + total_accessorials
+    
+    # Calculate transit time
+    base_transit = max(1, int(distance / 500))
+    if urgency == 'Express':
+        transit_days = max(1, base_transit - 1)
+    elif urgency == 'Priority':
+        transit_days = base_transit
+    elif urgency == 'Same Day':
+        transit_days = 1
+    else:
+        transit_days = base_transit + 1
+    
+    return {
+        'carrier': carrier,
+        'line_haul': round(line_haul, 2),
+        'fuel_surcharge': round(fuel_surcharge, 2),
+        'accessorials': round(total_accessorials, 2),
+        'total_cost': round(total_cost, 2),
+        'transit_days': transit_days,
+        'distance': round(distance, 2)
+    }
+
 def generate_complete_sample_data():
     """Generate comprehensive sample TMS data"""
     np.random.seed(42)
     random.seed(42)
     
     loads = []
+    shipments = []
+    carrier_rates = []
+    performance_data = []
+    financial_data = []
+    
+    shipment_id = 10000
+    rate_id = 100000
+    
     for i in range(500):
         origin = random.choice(list(US_CITIES.keys()))
         destination = random.choice(list(US_CITIES.keys()))
@@ -264,9 +359,14 @@ def generate_complete_sample_data():
         distance = calculate_distance(origin, destination)
         
         weight = random.randint(1000, 45000)
-        base_cost = distance * 2.5 * (1 + weight/10000)
+        service_type = 'TL' if weight > 10000 else random.choice(['LTL', 'Partial'])
+        equipment_type = random.choice(['Dry Van', 'Reefer', 'Flatbed'])
         
-        loads.append({
+        selected_carrier = random.choice(CARRIERS)
+        cost_data = calculate_shipping_cost(origin, destination, weight, selected_carrier, 
+                                           service_type, equipment_type)
+        
+        load = {
             'Load_ID': f'LD{i+1000:06d}',
             'Customer_ID': f'CUST{random.randint(1, 20):04d}',
             'Origin_City': origin,
@@ -275,25 +375,82 @@ def generate_complete_sample_data():
             'Delivery_Date': delivery_date.strftime('%Y-%m-%d'),
             'Load_Status': random.choice(['Delivered', 'In Transit', 'Scheduled']),
             'Total_Weight_lbs': weight,
-            'Equipment_Type': random.choice(['Dry Van', 'Reefer', 'Flatbed']),
-            'Service_Type': random.choice(['TL', 'LTL', 'Partial']),
-            'Selected_Carrier': random.choice(CARRIERS),
+            'Total_Volume_cuft': weight * random.uniform(2, 5),
+            'Equipment_Type': equipment_type,
+            'Service_Type': service_type,
+            'Selected_Carrier': selected_carrier,
             'Distance_miles': distance,
-            'Line_Haul_Costs': base_cost,
-            'Fuel_Surcharge': base_cost * 0.2,
-            'Total_Cost': base_cost * 1.2,
-            'Transit_Days': max(1, int(distance / 500) + random.randint(0, 2)),
+            'Line_Haul_Costs': cost_data['line_haul'],
+            'Fuel_Surcharge': cost_data['fuel_surcharge'],
+            'Accessorial_Charges': cost_data['accessorials'],
+            'Total_Cost': cost_data['total_cost'],
+            'Transit_Days': cost_data['transit_days'],
             'On_Time_Delivery': random.choices(['Yes', 'No'], weights=[9, 1])[0],
             'Customer_Rating': round(random.uniform(3.5, 5.0), 1)
-        })
+        }
+        
+        load['Revenue'] = load['Total_Cost'] * random.uniform(1.1, 1.4)
+        load['Profit_Margin_%'] = ((load['Revenue'] - load['Total_Cost']) / load['Revenue'] * 100)
+        
+        loads.append(load)
+        
+        # Generate shipments for this load (1-3 shipments)
+        num_shipments = random.randint(1, 3)
+        for s in range(num_shipments):
+            shipments.append({
+                'Shipment_ID': f'SH{shipment_id:06d}',
+                'Load_ID': load['Load_ID'],
+                'Weight_lbs': weight // num_shipments,
+                'Volume_cuft': load['Total_Volume_cuft'] // num_shipments,
+                'Pieces': random.randint(1, 50),
+                'Commodity': random.choice(['Electronics', 'Furniture', 'Food', 'Chemicals', 'Textiles']),
+                'Hazmat_Flag': 'Y' if random.random() < 0.1 else 'N'
+            })
+            shipment_id += 1
+        
+        # Generate carrier quotes for this load (3-5 quotes)
+        for carrier in random.sample(CARRIERS, random.randint(3, 5)):
+            quote_data = calculate_shipping_cost(origin, destination, weight, carrier, 
+                                                service_type, equipment_type)
+            carrier_rates.append({
+                'Rate_ID': f'RT{rate_id:06d}',
+                'Load_ID': load['Load_ID'],
+                'Carrier_Name': carrier,
+                'Line_Haul_Cost': quote_data['line_haul'],
+                'Fuel_Surcharge': quote_data['fuel_surcharge'],
+                'Accessorial_Charges': quote_data['accessorials'],
+                'Total_Cost': quote_data['total_cost'],
+                'Transit_Days': quote_data['transit_days'],
+                'Service_Level': random.choice(['Standard', 'Expedited', 'Economy'])
+            })
+            rate_id += 1
+        
+        # Generate performance data for delivered loads
+        if load['Load_Status'] == 'Delivered':
+            performance_data.append({
+                'Load_ID': load['Load_ID'],
+                'Selected_Carrier': load['Selected_Carrier'],
+                'On_Time_Delivery': load['On_Time_Delivery'],
+                'Rating': load['Customer_Rating'],
+                'Damage_Claims': 0 if random.random() > 0.05 else random.randint(1, 3),
+                'Service_Failures': 0 if random.random() > 0.1 else 1
+            })
+            
+            financial_data.append({
+                'Load_ID': load['Load_ID'],
+                'Revenue': round(load['Revenue'], 2),
+                'Cost': round(load['Total_Cost'], 2),
+                'Gross_Margin': round(load['Revenue'] - load['Total_Cost'], 2),
+                'Profit_Margin_Percent': round(load['Profit_Margin_%'], 2)
+            })
     
-    loads_df = pd.DataFrame(loads)
-    
-    # Calculate profit margins
-    loads_df['Revenue'] = loads_df['Total_Cost'] * random.uniform(1.1, 1.4)
-    loads_df['Profit_Margin_%'] = ((loads_df['Revenue'] - loads_df['Total_Cost']) / loads_df['Revenue'] * 100).round(2)
-    
-    return {'mapping_load_details': loads_df}
+    return {
+        'mapping_load_details': pd.DataFrame(loads),
+        'mapping_shipment_details': pd.DataFrame(shipments),
+        'mapping_carrier_rates': pd.DataFrame(carrier_rates),
+        'fact_carrier_performance': pd.DataFrame(performance_data),
+        'fact_financial': pd.DataFrame(financial_data)
+    }
 
 class AIOptimizationAgent:
     """AI Agent for intelligent optimization recommendations"""
@@ -304,7 +461,6 @@ class AIOptimizationAgent:
         insights = []
         
         if 'Origin_City' in df.columns and 'Destination_City' in df.columns:
-            # Top performing lanes
             lane_performance = df.groupby(['Origin_City', 'Destination_City']).agg({
                 'Load_ID': 'count',
                 'Total_Cost': 'mean',
@@ -314,14 +470,13 @@ class AIOptimizationAgent:
             top_lanes = lane_performance.nlargest(3, 'Load_ID')
             insights.append({
                 'type': 'success',
-                'title': 'High-Volume Lanes Identified',
-                'content': f"Focus on top 3 lanes handling {top_lanes['Load_ID'].sum()} loads",
-                'action': 'Negotiate volume discounts with carriers',
+                'title': 'High-Volume Lanes',
+                'content': f"Top 3 lanes: {top_lanes['Load_ID'].sum()} loads",
+                'action': 'Negotiate volume discounts',
                 'potential_savings': f"${top_lanes['Load_ID'].sum() * 50:,.0f}"
             })
         
         if 'Selected_Carrier' in df.columns and 'On_Time_Delivery' in df.columns:
-            # Carrier performance analysis
             carrier_performance = df.groupby('Selected_Carrier').agg({
                 'On_Time_Delivery': lambda x: (x == 'Yes').mean() * 100,
                 'Load_ID': 'count'
@@ -331,25 +486,23 @@ class AIOptimizationAgent:
             if len(underperformers) > 0:
                 insights.append({
                     'type': 'warning',
-                    'title': 'Carrier Performance Alert',
-                    'content': f"{len(underperformers)} carriers below 85% on-time delivery",
-                    'action': 'Consider carrier reallocation',
+                    'title': 'Carrier Alert',
+                    'content': f"{len(underperformers)} carriers below 85%",
+                    'action': 'Reallocate carriers',
                     'potential_savings': f"${len(underperformers) * 5000:,.0f}"
                 })
         
         if 'Service_Type' in df.columns and 'Total_Weight_lbs' in df.columns:
-            # Mode optimization
             ltl_heavy = df[(df['Service_Type'] == 'LTL') & (df['Total_Weight_lbs'] > 8000)]
             if len(ltl_heavy) > 0:
                 insights.append({
                     'type': 'danger',
-                    'title': 'Mode Optimization Opportunity',
-                    'content': f"{len(ltl_heavy)} LTL shipments exceed optimal weight",
-                    'action': 'Convert to TL for cost savings',
+                    'title': 'Mode Optimization',
+                    'content': f"{len(ltl_heavy)} LTL over weight",
+                    'action': 'Convert to TL',
                     'potential_savings': f"${len(ltl_heavy) * 300:,.0f}"
                 })
         
-        # Consolidation opportunities
         if 'Pickup_Date' in df.columns:
             try:
                 df['Ship_Date'] = pd.to_datetime(df['Pickup_Date'], errors='coerce').dt.date
@@ -358,187 +511,86 @@ class AIOptimizationAgent:
                 if consolidatable > 0:
                     insights.append({
                         'type': 'success',
-                        'title': 'Consolidation Potential',
-                        'content': f"{consolidatable} same-day same-lane opportunities",
-                        'action': 'Implement load consolidation',
+                        'title': 'Consolidation',
+                        'content': f"{consolidatable} opportunities",
+                        'action': 'Consolidate loads',
                         'potential_savings': f"${consolidatable * 200:,.0f}"
                     })
             except:
                 pass
         
         return insights
-    
-    @staticmethod
-    def predict_optimal_carrier(origin, destination, weight, urgency='Standard'):
-        """Predict optimal carrier using ML simulation"""
-        distance = calculate_distance(origin, destination)
-        
-        carriers_analysis = []
-        for carrier in CARRIERS:
-            # Simulate ML prediction
-            base_score = random.uniform(0.7, 0.95)
-            
-            # Adjust for carrier strengths
-            if carrier in ['UPS', 'FedEx'] and urgency == 'Express':
-                base_score += 0.1
-            elif carrier in ['SAIA', 'Old Dominion'] and weight > 10000:
-                base_score += 0.08
-            elif carrier == 'USPS' and weight < 1000:
-                base_score += 0.05
-            
-            cost = distance * random.uniform(2.0, 3.5) * (1 + weight/10000)
-            transit = max(1, int(distance / 500))
-            
-            carriers_analysis.append({
-                'carrier': carrier,
-                'score': min(base_score, 1.0),
-                'cost': cost,
-                'transit': transit,
-                'confidence': random.uniform(0.85, 0.98)
-            })
-        
-        return sorted(carriers_analysis, key=lambda x: x['score'], reverse=True)
-    
-    @staticmethod
-    def generate_cost_reduction_plan(df):
-        """Generate comprehensive cost reduction plan"""
-        plan = []
-        
-        if 'Total_Cost' in df.columns:
-            current_spend = df['Total_Cost'].sum()
-            
-            # Volume consolidation
-            plan.append({
-                'strategy': 'Volume Consolidation',
-                'description': 'Consolidate shipments with top 3 carriers',
-                'implementation': 'Q1 2025',
-                'expected_savings': current_spend * 0.08,
-                'confidence': 0.92
-            })
-            
-            # Route optimization
-            plan.append({
-                'strategy': 'Route Optimization',
-                'description': 'Implement AI-based route planning',
-                'implementation': 'Q2 2025',
-                'expected_savings': current_spend * 0.05,
-                'confidence': 0.88
-            })
-            
-            # Mode shifting
-            plan.append({
-                'strategy': 'Mode Shifting',
-                'description': 'Convert qualifying LTL to TL shipments',
-                'implementation': 'Immediate',
-                'expected_savings': current_spend * 0.03,
-                'confidence': 0.95
-            })
-            
-            # Contract renegotiation
-            plan.append({
-                'strategy': 'Contract Renegotiation',
-                'description': 'Leverage volume for better rates',
-                'implementation': 'Q1 2025',
-                'expected_savings': current_spend * 0.06,
-                'confidence': 0.85
-            })
-        
-        return plan
 
 def display_enhanced_dashboard():
     """Enhanced dashboard with comprehensive analytics"""
     
     if not st.session_state.data_model:
-        # Welcome screen
-        st.markdown("""
-        <div class='alert-success'>
-            <h3>🚀 Welcome to Lane Optimization Intelligence Platform</h3>
-            <p>Get started by generating sample data or uploading your transportation files</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.info("📊 **500+ Loads** Sample Data Available")
+            st.info("📊 **500+ Loads** Ready to Generate")
         with col2:
-            st.info("🤖 **AI Agents** Ready for Analysis")
+            st.info("🤖 **AI Agents** Standing By")
         with col3:
             st.info("💰 **15-30%** Potential Savings")
         return
     
-    # Get primary data
     df = st.session_state.data_model.get('mapping_load_details')
     if df is None:
         return
     
-    # Initialize AI Agent
     ai_agent = AIOptimizationAgent()
     
-    # Top metrics with enhanced visuals
-    st.markdown("### 📊 Executive Summary")
+    # Metrics row
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
         total_loads = len(df)
-        st.metric("📦 Total Loads", f"{total_loads:,}", 
-                 f"+{int(total_loads * 0.1)} vs last month")
+        st.metric("📦 Loads", f"{total_loads:,}", f"+{int(total_loads * 0.1)}")
     
     with col2:
         if 'Total_Cost' in df.columns:
             total_cost = df['Total_Cost'].sum()
-            st.metric("💰 Total Spend", f"${total_cost/1000:.0f}K",
-                     f"-${total_cost * 0.03 / 1000:.0f}K saved")
+            st.metric("💰 Spend", f"${total_cost/1000:.0f}K", f"-${total_cost * 0.03 / 1000:.0f}K")
     
     with col3:
         unique_lanes = df.groupby(['Origin_City', 'Destination_City']).ngroups
-        st.metric("🛤️ Active Lanes", f"{unique_lanes}",
-                 f"{int(unique_lanes * 0.15)} optimized")
+        st.metric("🛤️ Lanes", f"{unique_lanes}", f"{int(unique_lanes * 0.15)} opt")
     
     with col4:
         unique_carriers = df['Selected_Carrier'].nunique()
-        st.metric("🚛 Carriers", f"{unique_carriers}",
-                 "↑ 2 new")
+        st.metric("🚛 Carriers", f"{unique_carriers}", "↑2")
     
     with col5:
         if 'On_Time_Delivery' in df.columns:
             on_time = (df['On_Time_Delivery'] == 'Yes').mean() * 100
-            st.metric("⏰ On-Time", f"{on_time:.1f}%",
-                     f"+{on_time - 85:.1f}%")
+            st.metric("⏰ OT%", f"{on_time:.0f}%", f"+{(on_time - 85):.0f}%")
     
     with col6:
         if 'Profit_Margin_%' in df.columns:
             avg_margin = df['Profit_Margin_%'].mean()
-            st.metric("📈 Margin", f"{avg_margin:.1f}%",
-                     f"+{avg_margin - 15:.1f}%")
+            st.metric("📈 Margin", f"{avg_margin:.0f}%", f"+{(avg_margin - 15):.0f}%")
     
-    # AI Insights Section
-    st.markdown("### 🤖 AI-Powered Insights & Recommendations")
-    
+    # AI Insights
     insights = ai_agent.analyze_historical_patterns(df)
     
     if insights:
-        cols = st.columns(len(insights[:4]))  # Show max 4 insights
+        cols = st.columns(4)
         for idx, insight in enumerate(insights[:4]):
             with cols[idx]:
                 badge_class = insight['type'] + '-badge'
                 st.markdown(f"""
                 <div class='insight-card'>
                     <div class='{badge_class}'>{insight['title']}</div>
-                    <p style='margin: 0.5rem 0; font-size: 0.9rem;'>{insight['content']}</p>
-                    <p style='margin: 0.5rem 0; font-weight: bold; color: #667eea;'>Action: {insight['action']}</p>
-                    <p style='margin: 0; font-size: 1.1rem; font-weight: bold; color: #10b981;'>
-                        Potential: {insight['potential_savings']}
-                    </p>
+                    <p style='margin: 0.3rem 0; font-size: 0.85rem;'>{insight['content']}</p>
+                    <p style='margin: 0.3rem 0; font-weight: bold; color: #667eea; font-size: 0.8rem;'>{insight['action']}</p>
+                    <p style='margin: 0; font-size: 0.95rem; font-weight: bold; color: #10b981;'>{insight['potential_savings']}</p>
                 </div>
                 """, unsafe_allow_html=True)
     
-    # Advanced Analytics Row
-    st.markdown("### 📈 Performance Analytics")
-    
+    # Analytics Row
     col1, col2 = st.columns(2)
     
     with col1:
-        # Cost trend analysis
         if 'Pickup_Date' in df.columns and 'Total_Cost' in df.columns:
             df['Date'] = pd.to_datetime(df['Pickup_Date'], errors='coerce')
             daily_stats = df.groupby(df['Date'].dt.date).agg({
@@ -551,341 +603,419 @@ def display_enhanced_dashboard():
             
             fig.add_trace(
                 go.Scatter(x=daily_stats['Date'], y=daily_stats['Cost'],
-                          name='Daily Cost', line=dict(color='#667eea', width=2)),
+                          name='Cost', line=dict(color='#667eea', width=2)),
                 secondary_y=False,
             )
             
             fig.add_trace(
                 go.Bar(x=daily_stats['Date'], y=daily_stats['Loads'],
-                      name='Load Count', marker_color='rgba(102, 126, 234, 0.3)'),
+                      name='Loads', marker_color='rgba(102, 126, 234, 0.3)'),
                 secondary_y=True,
             )
             
-            fig.update_xaxes(title_text="Date")
-            fig.update_yaxes(title_text="Cost ($)", secondary_y=False)
-            fig.update_yaxes(title_text="Number of Loads", secondary_y=True)
-            fig.update_layout(height=350, title_text="Cost & Volume Trends", showlegend=True)
-            
+            fig.update_layout(height=300, title_text="Cost & Volume Trends", showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        # Carrier performance matrix
         if 'Selected_Carrier' in df.columns:
             carrier_analysis = df.groupby('Selected_Carrier').agg({
                 'Load_ID': 'count',
                 'Total_Cost': 'mean',
-                'On_Time_Delivery': lambda x: (x == 'Yes').mean() * 100 if 'On_Time_Delivery' in df.columns else 90
+                'On_Time_Delivery': lambda x: (x == 'Yes').mean() * 100
             }).reset_index()
-            carrier_analysis.columns = ['Carrier', 'Loads', 'Avg_Cost', 'On_Time_%']
+            carrier_analysis.columns = ['Carrier', 'Loads', 'Avg_Cost', 'OT%']
             
-            fig = px.scatter(carrier_analysis, 
-                           x='Avg_Cost', 
-                           y='On_Time_%',
-                           size='Loads',
-                           color='Carrier',
-                           title='Carrier Performance Matrix',
-                           labels={'Avg_Cost': 'Average Cost ($)', 'On_Time_%': 'On-Time Delivery (%)'},
-                           hover_data=['Loads'])
-            
-            # Add quadrant lines
+            fig = px.scatter(carrier_analysis, x='Avg_Cost', y='OT%',
+                           size='Loads', color='Carrier',
+                           title='Carrier Performance Matrix')
             fig.add_hline(y=90, line_dash="dash", line_color="gray", opacity=0.5)
             fig.add_vline(x=carrier_analysis['Avg_Cost'].median(), line_dash="dash", line_color="gray", opacity=0.5)
-            
-            fig.update_layout(height=350)
+            fig.update_layout(height=300)
             st.plotly_chart(fig, use_container_width=True)
+
+def display_lane_analysis_detailed():
+    """Detailed lane analysis"""
     
-    # Lane Performance Analysis
-    st.markdown("### 🛤️ Lane Intelligence")
+    if 'mapping_load_details' not in st.session_state.data_model:
+        st.warning("Please load data first")
+        return
     
-    col1, col2, col3 = st.columns([2, 2, 1])
+    df = st.session_state.data_model['mapping_load_details']
     
-    with col1:
-        # Top lanes with profitability
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Performance", "🚛 Carriers", "💡 Consolidation", "📈 Optimization"
+    ])
+    
+    with tab1:
         lane_analysis = df.groupby(['Origin_City', 'Destination_City']).agg({
             'Load_ID': 'count',
-            'Total_Cost': 'sum',
-            'Profit_Margin_%': 'mean' if 'Profit_Margin_%' in df.columns else lambda x: 15
-        }).nlargest(10, 'Load_ID').reset_index()
-        lane_analysis.columns = ['Origin', 'Destination', 'Loads', 'Total_Cost', 'Margin_%']
-        lane_analysis['Lane'] = lane_analysis['Origin'] + ' → ' + lane_analysis['Destination']
+            'Total_Weight_lbs': ['sum', 'mean'],
+            'Total_Cost': ['sum', 'mean'],
+            'Transit_Days': 'mean',
+            'On_Time_Delivery': lambda x: (x == 'Yes').mean() * 100,
+            'Profit_Margin_%': 'mean' if 'Profit_Margin_%' in df.columns else lambda x: 0
+        }).round(2)
         
-        fig = px.bar(lane_analysis, 
-                     y='Lane', 
-                     x='Loads',
-                     color='Margin_%',
-                     orientation='h',
-                     title='Top 10 Lanes by Volume & Profitability',
-                     color_continuous_scale='RdYlGn',
-                     labels={'Margin_%': 'Margin %'})
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Cost distribution by service type
-        if 'Service_Type' in df.columns:
-            service_analysis = df.groupby('Service_Type').agg({
-                'Total_Cost': ['mean', 'sum', 'count']
-            }).reset_index()
-            service_analysis.columns = ['Service_Type', 'Avg_Cost', 'Total_Cost', 'Count']
-            
-            fig = make_subplots(rows=1, cols=2, 
-                               subplot_titles=('Cost Distribution', 'Volume Share'),
-                               specs=[[{'type': 'bar'}, {'type': 'pie'}]])
-            
-            fig.add_trace(
-                go.Bar(x=service_analysis['Service_Type'], 
-                      y=service_analysis['Avg_Cost'],
-                      marker_color=['#667eea', '#764ba2', '#9f7aea']),
-                row=1, col=1
-            )
-            
-            fig.add_trace(
-                go.Pie(labels=service_analysis['Service_Type'], 
-                      values=service_analysis['Count'],
-                      hole=0.4),
-                row=1, col=2
-            )
-            
-            fig.update_layout(height=400, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
-    
-    with col3:
-        # Quick stats
-        st.markdown("#### 📊 Quick Stats")
+        lane_analysis.columns = ['Loads', 'Tot_Weight', 'Avg_Weight', 
+                                'Tot_Cost', 'Avg_Cost', 'Transit', 
+                                'OT%', 'Margin%']
+        lane_analysis = lane_analysis.sort_values('Loads', ascending=False).head(20)
+        lane_analysis = lane_analysis.reset_index()
+        lane_analysis['Lane'] = lane_analysis['Origin_City'] + ' → ' + lane_analysis['Destination_City']
         
-        if 'Distance_miles' in df.columns:
-            avg_distance = df['Distance_miles'].mean()
-            st.info(f"**Avg Distance**\n{avg_distance:.0f} miles")
-        
-        if 'Total_Weight_lbs' in df.columns:
-            avg_weight = df['Total_Weight_lbs'].mean()
-            st.info(f"**Avg Weight**\n{avg_weight:,.0f} lbs")
-        
-        if 'Transit_Days' in df.columns:
-            avg_transit = df['Transit_Days'].mean()
-            st.info(f"**Avg Transit**\n{avg_transit:.1f} days")
-    
-    # Cost Reduction Plan
-    st.markdown("### 💰 AI-Generated Cost Reduction Plan")
-    
-    cost_plan = ai_agent.generate_cost_reduction_plan(df)
-    
-    if cost_plan:
-        plan_df = pd.DataFrame(cost_plan)
-        total_savings = plan_df['expected_savings'].sum()
-        
-        col1, col2 = st.columns([3, 1])
+        col1, col2 = st.columns(2)
         
         with col1:
-            fig = px.bar(plan_df, 
-                        x='strategy', 
-                        y='expected_savings',
-                        color='confidence',
-                        title=f'Cost Reduction Strategies - Total Potential: ${total_savings:,.0f}',
-                        labels={'expected_savings': 'Expected Savings ($)', 'confidence': 'Confidence'},
-                        color_continuous_scale='Greens')
-            fig.update_layout(height=300)
+            fig = px.bar(lane_analysis.head(10), x='Loads', y='Lane',
+                        orientation='h', color='Margin%',
+                        color_continuous_scale='RdYlGn',
+                        title='Top 10 Lanes')
+            fig.update_layout(height=350)
             st.plotly_chart(fig, use_container_width=True)
         
         with col2:
-            st.markdown(f"""
-            <div class='recommendation-box'>
-                <h4 style='margin: 0; color: #667eea;'>💡 Total Savings Potential</h4>
-                <p style='font-size: 2rem; font-weight: bold; color: #10b981; margin: 0.5rem 0;'>
-                    ${total_savings:,.0f}
-                </p>
-                <p style='font-size: 0.9rem; color: #6b7280; margin: 0;'>
-                    Achievable in 6 months with 88% confidence
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+            fig = px.scatter(lane_analysis, x='Loads', y='Avg_Cost',
+                           size='Tot_Cost', color='OT%',
+                           hover_data=['Lane'], title='Cost vs Volume')
+            fig.update_layout(height=350)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        st.dataframe(
+            lane_analysis[['Lane', 'Loads', 'Avg_Cost', 'Transit', 'OT%', 'Margin%']].style.format({
+                'Avg_Cost': '${:,.0f}',
+                'Transit': '{:.1f}d',
+                'OT%': '{:.0f}%',
+                'Margin%': '{:.0f}%'
+            }),
+            use_container_width=True,
+            hide_index=True,
+            height=300
+        )
     
-    # Real-time Alerts
-    st.markdown("### 🚨 Real-Time Alerts & Actions")
+    with tab2:
+        carrier_summary = df.groupby('Selected_Carrier').agg({
+            'Load_ID': 'count',
+            'Total_Cost': ['mean', 'sum'],
+            'Transit_Days': 'mean',
+            'On_Time_Delivery': lambda x: (x == 'Yes').mean() * 100,
+            'Customer_Rating': 'mean'
+        }).round(2)
+        
+        carrier_summary.columns = ['Loads', 'Avg_Cost', 'Tot_Revenue', 
+                                  'Transit', 'OT%', 'Rating']
+        carrier_summary = carrier_summary.sort_values('Loads', ascending=False)
+        
+        st.dataframe(
+            carrier_summary.style.format({
+                'Avg_Cost': '${:,.0f}',
+                'Tot_Revenue': '${:,.0f}',
+                'Transit': '{:.1f}d',
+                'OT%': '{:.0f}%',
+                'Rating': '{:.1f}'
+            }),
+            use_container_width=True,
+            height=350
+        )
     
+    with tab3:
+        if 'Pickup_Date' in df.columns:
+            df['Ship_Date'] = pd.to_datetime(df['Pickup_Date'], errors='coerce').dt.date
+            consolidation = df.groupby(['Origin_City', 'Destination_City', 'Ship_Date']).agg({
+                'Load_ID': 'count',
+                'Total_Weight_lbs': 'sum',
+                'Total_Cost': 'sum'
+            }).reset_index()
+            
+            consolidation.columns = ['Origin', 'Dest', 'Date', 'Loads', 'Weight', 'Cost']
+            consolidation_opps = consolidation[consolidation['Loads'] > 1]
+            
+            if len(consolidation_opps) > 0:
+                consolidation_opps['Savings'] = consolidation_opps['Cost'] * 0.15
+                consolidation_opps['Lane'] = consolidation_opps['Origin'] + ' → ' + consolidation_opps['Dest']
+                consolidation_opps = consolidation_opps.sort_values('Savings', ascending=False).head(20)
+                
+                total_savings = consolidation_opps['Savings'].sum()
+                st.success(f"💰 Total Potential Savings: ${total_savings:,.0f}")
+                
+                st.dataframe(
+                    consolidation_opps[['Lane', 'Date', 'Loads', 'Weight', 'Cost', 'Savings']].style.format({
+                        'Weight': '{:,.0f}',
+                        'Cost': '${:,.0f}',
+                        'Savings': '${:,.0f}'
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=300
+                )
+    
+    with tab4:
+        if 'Service_Type' in df.columns and 'Total_Weight_lbs' in df.columns:
+            ltl_heavy = df[(df['Service_Type'] == 'LTL') & (df['Total_Weight_lbs'] > 8000)]
+            tl_light = df[(df['Service_Type'] == 'TL') & (df['Total_Weight_lbs'] < 10000)]
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.info(f"**{len(ltl_heavy)} LTL** → TL conversion")
+                st.info(f"**{len(tl_light)} TL** → LTL conversion")
+            
+            with col2:
+                df['Cost_per_lb'] = df['Total_Cost'] / df['Total_Weight_lbs']
+                
+                fig = px.scatter(df.sample(min(100, len(df))), 
+                               x='Total_Weight_lbs', y='Cost_per_lb',
+                               color='Service_Type', title='Cost Efficiency')
+                fig.update_layout(height=300)
+                st.plotly_chart(fig, use_container_width=True)
+
+def display_route_optimizer_comprehensive():
+    """Comprehensive route optimization"""
+    
+    # Input sections
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("""
-        <div class='alert-warning'>
-            <strong>⚠️ Capacity Alert</strong><br>
-            Chicago → Dallas lane at 95% capacity<br>
-            <small>Action: Secure additional carriers</small>
-        </div>
-        """, unsafe_allow_html=True)
+        origin = st.selectbox("Origin", list(US_CITIES.keys()))
+        destination = st.selectbox("Destination", [c for c in US_CITIES.keys() if c != origin])
+        distance = calculate_distance(origin, destination)
+        st.info(f"📏 {distance:.0f} mi")
     
     with col2:
-        st.markdown("""
-        <div class='alert-danger'>
-            <strong>🔴 Service Failure Risk</strong><br>
-            3 carriers below SLA threshold<br>
-            <small>Action: Immediate review required</small>
-        </div>
-        """, unsafe_allow_html=True)
+        weight = st.number_input("Weight (lbs)", min_value=100, max_value=50000, value=5000, step=100)
+        volume = st.number_input("Volume (cu ft)", min_value=10, max_value=3000, value=500, step=10)
+        pieces = st.number_input("Pieces", min_value=1, max_value=1000, value=10)
     
     with col3:
-        st.markdown("""
-        <div class='alert-success'>
-            <strong>✅ Optimization Success</strong><br>
-            $45K saved this week<br>
-            <small>15% below budget target</small>
-        </div>
-        """, unsafe_allow_html=True)
-
-def display_ai_assistant_enhanced():
-    """Enhanced AI Assistant with proactive recommendations"""
+        service_type = st.selectbox("Service", ['LTL', 'TL', 'Partial', 'Expedited'])
+        equipment_type = st.selectbox("Equipment", ['Dry Van', 'Reefer', 'Flatbed', 'Step Deck'])
+        urgency = st.select_slider("Urgency", ['Economy', 'Standard', 'Priority', 'Express'])
     
-    st.markdown("### 🤖 AI Optimization Assistant")
+    # Additional options
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        accessorials = st.multiselect("Accessorials",
+                                     ['Liftgate', 'Inside Delivery', 'Residential', 
+                                      'Limited Access', 'Hazmat', 'Team Driver'])
+    
+    with col2:
+        temp_controlled = st.checkbox("Temp Controlled")
+        hazmat = st.checkbox("Hazmat")
+        high_value = st.checkbox("High Value")
+    
+    with col3:
+        optimize_for = st.radio("Optimize", ['Cost', 'Speed', 'Reliability', 'Balance'])
+        budget = st.number_input("Budget ($)", min_value=0, value=0)
+    
+    if st.button("🚀 Analyze Route", type="primary", use_container_width=True):
+        
+        with st.spinner("Optimizing..."):
+            
+            carrier_results = []
+            
+            for carrier in CARRIERS:
+                result = calculate_shipping_cost(
+                    origin, destination, weight, carrier, 
+                    service_type, equipment_type, accessorials, urgency
+                )
+                
+                reliability = {
+                    'UPS': 95, 'FedEx': 96, 'Old Dominion': 94, 'XPO': 88,
+                    'SAIA': 87, 'DHL': 90, 'OnTrac': 85, 'USPS': 82,
+                    'YRC': 86, 'Estes': 88
+                }.get(carrier, 85)
+                
+                capacity = random.randint(70, 100)
+                
+                if optimize_for == 'Cost':
+                    score = 100 - (result['total_cost'] / 10000 * 100)
+                elif optimize_for == 'Speed':
+                    score = 100 - (result['transit_days'] * 10)
+                elif optimize_for == 'Reliability':
+                    score = reliability
+                else:
+                    score = (100 - (result['total_cost'] / 10000 * 50)) + (100 - result['transit_days'] * 5) + (reliability / 2)
+                
+                carrier_results.append({
+                    'Carrier': carrier,
+                    'Cost': result['total_cost'],
+                    'Transit': result['transit_days'],
+                    'Reliability': reliability,
+                    'Capacity': capacity,
+                    'Score': round(score, 1)
+                })
+            
+            results_df = pd.DataFrame(carrier_results)
+            
+            if budget > 0:
+                results_df = results_df[results_df['Cost'] <= budget]
+            
+            results_df = results_df.sort_values('Score', ascending=False)
+            
+            # Results
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Best Rate", f"${results_df['Cost'].min():,.0f}")
+            with col2:
+                st.metric("Fastest", f"{results_df['Transit'].min()}d")
+            with col3:
+                savings = results_df['Cost'].mean() - results_df.iloc[0]['Cost']
+                st.metric("Savings", f"${savings:,.0f}")
+            with col4:
+                st.metric("Best Score", f"{results_df.iloc[0]['Score']:.0f}")
+            
+            # Top 3
+            for idx in range(min(3, len(results_df))):
+                row = results_df.iloc[idx]
+                
+                with st.expander(f"{'🥇' if idx == 0 else '🥈' if idx == 1 else '🥉'} {row['Carrier']} - ${row['Cost']:,.0f}", expanded=(idx == 0)):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Cost", f"${row['Cost']:,.0f}")
+                    with col2:
+                        st.metric("Transit", f"{row['Transit']}d")
+                    with col3:
+                        st.metric("Reliability", f"{row['Reliability']}%")
+            
+            # Table
+            st.dataframe(
+                results_df.style.format({
+                    'Cost': '${:,.0f}',
+                    'Transit': '{}d',
+                    'Reliability': '{}%',
+                    'Capacity': '{}%',
+                    'Score': '{:.0f}'
+                }),
+                use_container_width=True,
+                hide_index=True,
+                height=250
+            )
+            
+            # Viz
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = px.scatter(results_df, x='Cost', y='Transit',
+                               size='Reliability', color='Score', text='Carrier',
+                               color_continuous_scale='RdYlGn')
+                fig.update_layout(height=300)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = px.bar(results_df.head(5), x='Carrier', y='Score',
+                           color='Reliability', color_continuous_scale='Blues')
+                fig.update_layout(height=300)
+                st.plotly_chart(fig, use_container_width=True)
+
+def display_ai_assistant():
+    """AI Assistant"""
     
     if not st.session_state.data_model:
         st.info("Load data to enable AI Assistant")
         return
     
     df = st.session_state.data_model.get('mapping_load_details')
-    if df is None:
+    if not df:
         return
     
-    # Proactive recommendations
-    col1, col2 = st.columns([2, 1])
+    # Quick actions
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown("#### 💡 Proactive Recommendations")
-        
-        # Generate smart recommendations
-        recommendations = []
-        
-        if 'Total_Cost' in df.columns:
-            high_cost_lanes = df.groupby(['Origin_City', 'Destination_City'])['Total_Cost'].mean().nlargest(3)
-            for (origin, dest), cost in high_cost_lanes.items():
-                recommendations.append(f"🔍 Review {origin} → {dest} lane: Avg cost ${cost:.2f} (20% above median)")
-        
-        if 'On_Time_Delivery' in df.columns:
-            poor_performers = df[df['On_Time_Delivery'] == 'No']['Selected_Carrier'].value_counts().head(3)
-            for carrier, count in poor_performers.items():
-                recommendations.append(f"⚠️ {carrier} has {count} late deliveries - Consider performance review")
-        
-        if 'Service_Type' in df.columns and 'Total_Weight_lbs' in df.columns:
-            ltl_opportunities = len(df[(df['Service_Type'] == 'LTL') & (df['Total_Weight_lbs'] > 8000)])
-            if ltl_opportunities > 0:
-                recommendations.append(f"💰 Convert {ltl_opportunities} LTL shipments to TL for ${ltl_opportunities * 300:,.0f} savings")
-        
-        for rec in recommendations[:5]:  # Show top 5
-            st.markdown(f"""
-            <div class='ai-message'>
-                {rec}
-            </div>
-            """, unsafe_allow_html=True)
+        if st.button("🔮 Predict"):
+            st.success(f"Next week: {len(df)//4} loads, ${df['Total_Cost'].sum()//4:,.0f}")
     
     with col2:
-        st.markdown("#### 🎯 Quick Actions")
-        
-        if st.button("🔮 Predict Next Week", use_container_width=True):
-            st.success("Predicted: 125 loads, $285K spend, 92% on-time")
-        
-        if st.button("📊 Optimize Current Routes", use_container_width=True):
-            st.success("Found: 15 optimization opportunities saving $12K")
-        
-        if st.button("🚛 Reallocate Carriers", use_container_width=True):
-            st.success("Recommended: Shift 30 loads from DHL to FedEx")
-        
-        if st.button("💡 Generate Report", use_container_width=True):
-            st.success("Executive report generated and sent")
+        if st.button("💰 Savings"):
+            savings = df['Total_Cost'].sum() * 0.15 if 'Total_Cost' in df.columns else 50000
+            st.success(f"Found ${savings:,.0f} savings")
     
-    # Interactive Q&A
-    st.markdown("#### 💬 Ask Your Question")
+    with col3:
+        if st.button("🚛 Optimize"):
+            st.success("15 carrier optimizations found")
     
-    user_question = st.text_input("What insights do you need?", 
-                                 placeholder="e.g., Which lanes should we focus on for cost reduction?")
+    with col4:
+        if st.button("📊 Insights"):
+            st.success("8 actionable insights ready")
     
-    if user_question and st.button("Get Answer", type="primary"):
-        # Simulate AI response
-        response = f"""Based on your data analysis:
-        
-        1. **Top Opportunity**: Chicago → Dallas lane shows highest optimization potential
-        2. **Recommended Action**: Consolidate shipments on Tuesdays and Thursdays
-        3. **Expected Savings**: $15,000 per month
-        4. **Confidence Level**: 92%
-        
-        Would you like me to create an implementation plan?"""
-        
-        st.markdown(f"""
-        <div class='recommendation-box'>
-            <strong>AI Analysis:</strong><br>
-            {response}
-        </div>
-        """, unsafe_allow_html=True)
+    # Chat
+    user_input = st.text_input("Ask a question:", placeholder="What are the consolidation opportunities?")
+    
+    if user_input and st.button("Send"):
+        response = f"Based on analysis: Found {random.randint(10, 30)} opportunities saving ${random.randint(10000, 50000):,.0f}"
+        st.success(response)
 
 def main():
-    """Main application with enhanced UX"""
+    """Main application"""
     
-    # Sidebar with compact design
     with st.sidebar:
-        st.markdown("### ⚙️ Control Center")
+        st.markdown("### ⚙️ Control")
         
-        # Quick actions
-        if st.button("🎲 Generate Sample Data", type="primary", use_container_width=True):
+        if st.button("🎲 Generate Data", type="primary", use_container_width=True):
             with st.spinner("Generating..."):
-                sample_data = generate_complete_sample_data()
-                st.session_state.data_model = sample_data
-                st.success("✅ 500 loads generated!")
+                st.session_state.data_model = generate_complete_sample_data()
+                st.success("✅ 500 loads!")
                 st.rerun()
         
-        # File upload
-        uploaded = st.file_uploader("📁 Upload Data", type=['csv', 'xlsx'], accept_multiple_files=True)
+        uploaded = st.file_uploader("📁 Upload", type=['csv', 'xlsx'], accept_multiple_files=True)
         if uploaded:
             for file in uploaded:
                 try:
                     df = pd.read_csv(file) if file.name.endswith('.csv') else pd.read_excel(file)
                     st.session_state.data_model['mapping_load_details'] = df
-                    st.success(f"✅ Loaded {len(df)} records")
+                    st.success(f"✅ {len(df)} records")
                 except Exception as e:
-                    st.error(f"Error: {str(e)}")
+                    st.error(str(e))
         
-        # Quick stats
         if st.session_state.data_model:
             st.markdown("---")
-            st.markdown("### 📊 Quick Stats")
+            for table, df in st.session_state.data_model.items():
+                st.write(f"**{table.split('_')[0]}**: {len(df)}")
             
-            total_records = sum(len(df) for df in st.session_state.data_model.values())
-            st.metric("Total Records", f"{total_records:,}")
-            
-            if st.button("🗑️ Clear Data"):
+            if st.button("🗑️ Clear"):
                 st.session_state.data_model = {}
-                st.session_state.chat_history = []
                 st.rerun()
     
-    # Main content - Tabs without spacing
-    tab_list = ["📊 Dashboard", "🛤️ Lanes", "🎯 Optimizer", "🤖 AI Agent", "📈 Analytics"]
-    tabs = st.tabs(tab_list)
+    # Main tabs - NO SPACING
+    tabs = st.tabs(["📊 Dashboard", "🛤️ Lanes", "🎯 Optimizer", "🤖 AI", "📈 Analytics"])
     
     with tabs[0]:
         display_enhanced_dashboard()
     
     with tabs[1]:
-        st.markdown("### 🛤️ Lane Analysis")
-        if st.session_state.data_model:
-            df = st.session_state.data_model.get('mapping_load_details')
-            if df is not None:
-                # Lane performance content here
-                st.info("Lane analysis module - Full implementation available")
+        display_lane_analysis_detailed()
     
     with tabs[2]:
-        st.markdown("### 🎯 Route Optimizer")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            origin = st.selectbox("Origin", list(US_CITIES.keys()))
-        with col2:
-            destination = st.selectbox("Destination", [c for c in US_CITIES.keys() if c != origin])
-        with col3:
-            if st.button("Optimize", type="primary", use_container_width=True):
-                st.success("Route optimized! Best carrier: FedEx, Cost: $1,250")
+        display_route_optimizer_comprehensive()
     
     with tabs[3]:
-        display_ai_assistant_enhanced()
+        display_ai_assistant()
     
     with tabs[4]:
-        st.markdown("### 📈 Advanced Analytics")
-        st.info("Full analytics module - Implementation available")
+        if st.session_state.data_model:
+            df = st.session_state.data_model.get('mapping_load_details')
+            if df:
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    if 'Total_Cost' in df.columns:
+                        weekly_avg = df['Total_Cost'].sum() / 8
+                        st.metric("Weekly Avg", f"${weekly_avg:,.0f}")
+                
+                with col2:
+                    if 'On_Time_Delivery' in df.columns:
+                        ot = (df['On_Time_Delivery'] == 'Yes').mean() * 100
+                        st.metric("On-Time", f"{ot:.0f}%")
+                
+                with col3:
+                    lanes = df.groupby(['Origin_City', 'Destination_City']).ngroups
+                    st.metric("Lanes", lanes)
+                
+                with col4:
+                    if 'Profit_Margin_%' in df.columns:
+                        margin = df['Profit_Margin_%'].mean()
+                        st.metric("Margin", f"{margin:.0f}%")
 
 if __name__ == "__main__":
     main()
