@@ -1125,122 +1125,166 @@ def display_lane_analysis():
             st.warning("Unable to extract lane information from the uploaded data")
             st.info("💡 Upload tracking or main load files that contain origin/destination information")
     
-    with tab1:
+    with tab2:
         st.markdown("#### Performance Analysis")
         
-        # Calculate actual performance metrics
-        if 'LoadID' in df.columns:
-            # Load performance metrics
-            total_loads = df['LoadID'].nunique()
-            total_transactions = len(df)
-            avg_trans_per_load = total_transactions / total_loads
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("📦 Total Loads", f"{total_loads:,}")
-            with col2:
-                st.metric("📊 Transactions", f"{total_transactions:,}")
-            with col3:
-                st.metric("📈 Avg/Load", f"{avg_trans_per_load:.1f}")
-            with col4:
-                efficiency_score = min(100, (total_loads / total_transactions) * 100)
-                st.metric("⚡ Efficiency", f"{efficiency_score:.0f}%")
-            
-            st.markdown("---")
-            
-            # Performance distribution
-            load_activity = df['LoadID'].value_counts()
-            
-            # Categorize loads by activity level
-            high_activity = (load_activity > load_activity.quantile(0.75)).sum()
-            medium_activity = ((load_activity > load_activity.quantile(0.25)) & 
-                             (load_activity <= load_activity.quantile(0.75))).sum()
-            low_activity = (load_activity <= load_activity.quantile(0.25)).sum()
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Activity distribution chart
-                activity_data = pd.DataFrame({
-                    'Activity Level': ['High', 'Medium', 'Low'],
-                    'Load Count': [high_activity, medium_activity, low_activity],
-                    'Percentage': [
-                        high_activity/total_loads*100,
-                        medium_activity/total_loads*100,
-                        low_activity/total_loads*100
-                    ]
-                })
-                
-                fig = px.bar(
-                    activity_data,
-                    x='Activity Level',
-                    y='Load Count',
-                    color='Percentage',
-                    title='Load Activity Distribution',
-                    color_continuous_scale='RdYlGn_r',
-                    text='Load Count'
-                )
-                fig.update_traces(texttemplate='%{text:,}', textposition='outside')
-                fig.update_layout(height=350, showlegend=False)
-                st.plotly_chart(fig, key="perf_activity_dist")
-            
-            with col2:
-                # Calculate financial performance if available
-                financial_cols = [col for col in df.columns if any(
-                    term in col.lower() for term in ['charge', 'rate', 'cost', 'amount', 'sum']
-                ) and col not in ['Charge_Type', 'Type', 'Description']]
-                
-                if financial_cols:
-                    perf_metrics = []
-                    for col in financial_cols[:3]:
-                        try:
-                            numeric_data = pd.to_numeric(df[col], errors='coerce')
-                            if numeric_data.notna().sum() > 0:
-                                total = numeric_data.sum()
-                                avg = numeric_data.mean()
-                                if total > 0:
-                                    perf_metrics.append({
-                                        'Metric': col,
-                                        'Total': total,
-                                        'Average': avg
-                                    })
-                        except:
-                            pass
-                    
-                    if perf_metrics:
-                        perf_df = pd.DataFrame(perf_metrics)
-                        fig = px.bar(
-                            perf_df,
-                            x='Metric',
-                            y='Total',
-                            title='Financial Performance by Category',
-                            color='Total',
-                            color_continuous_scale='Blues'
-                        )
-                        fig.update_layout(height=350, showlegend=False)
-                        st.plotly_chart(fig, key="perf_financial")
-            
-            # Performance insights
-            st.markdown("##### 🎯 Performance Insights")
-            
-            insights = []
-            
-            if high_activity > total_loads * 0.2:
-                insights.append(f"⚠️ **High Concentration**: {high_activity} loads ({high_activity/total_loads*100:.0f}%) have high activity - consider process optimization")
-            
-            if low_activity > total_loads * 0.5:
-                insights.append(f"✅ **Good Distribution**: {low_activity} loads have minimal transactions - efficient processing")
-            
-            if avg_trans_per_load > 10:
-                potential_savings = (avg_trans_per_load - 5) * total_loads * 10  # $10 per excess transaction
-                insights.append(f"💰 **Consolidation Opportunity**: Reduce average transactions from {avg_trans_per_load:.1f} to 5 could save ${potential_savings:,.0f}")
-            
-            for insight in insights:
-                st.info(insight)
+        # Calculate comprehensive performance metrics
+        total_records = len(df)
         
-        else:
-            st.info("Load performance analysis requires LoadID column")
+        # Key performance metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if 'LoadID' in df.columns:
+                unique_loads = df['LoadID'].nunique()
+                st.metric("📦 Total Loads", f"{unique_loads:,}")
+            else:
+                st.metric("📊 Total Records", f"{total_records:,}")
+        
+        with col2:
+            # Processing efficiency
+            if 'LoadID' in df.columns:
+                avg_records_per_load = total_records / df['LoadID'].nunique()
+                efficiency = min(100, (5 / avg_records_per_load) * 100)  # Target 5 records per load
+                st.metric("⚡ Efficiency Score", f"{efficiency:.0f}%")
+            else:
+                st.metric("📈 Data Points", f"{total_records:,}")
+        
+        with col3:
+            # Financial performance
+            total_value = 0
+            financial_cols = [col for col in df.columns if any(
+                term in col.lower() for term in ['charge', 'rate', 'cost', 'amount', 'sum']
+            ) and col not in ['Charge_Type', 'Type', 'Description']]
+            
+            for col in financial_cols:
+                try:
+                    numeric_data = pd.to_numeric(df[col], errors='coerce')
+                    col_sum = numeric_data[numeric_data > 0].sum()
+                    if pd.notna(col_sum):
+                        total_value += col_sum
+                except:
+                    pass
+            
+            if total_value > 0:
+                st.metric("💰 Total Value", f"${total_value:,.0f}")
+            else:
+                st.metric("💰 Total Value", "Calculating...")
+        
+        with col4:
+            # Data quality score
+            null_percentage = (df.isnull().sum().sum() / (len(df) * len(df.columns))) * 100
+            quality_score = 100 - null_percentage
+            st.metric("✅ Quality Score", f"{quality_score:.0f}%")
+        
+        st.markdown("---")
+        
+        # Performance visualizations
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Transaction distribution over time if dates available
+            date_cols = [col for col in df.columns if 'date' in col.lower()]
+            if date_cols:
+                try:
+                    df['TempDate'] = pd.to_datetime(df[date_cols[0]], errors='coerce')
+                    daily_counts = df.groupby(df['TempDate'].dt.date).size().reset_index(name='Count')
+                    
+                    fig = px.line(
+                        daily_counts,
+                        x='TempDate',
+                        y='Count',
+                        title='Daily Transaction Trend',
+                        line_shape='spline'
+                    )
+                    fig.update_layout(height=350)
+                    st.plotly_chart(fig, key="perf_trend_v2")
+                except:
+                    # Fallback to load distribution
+                    if 'LoadID' in df.columns:
+                        load_dist = df['LoadID'].value_counts().head(15)
+                        fig = px.bar(
+                            x=load_dist.index,
+                            y=load_dist.values,
+                            title='Top 15 Loads by Activity',
+                            labels={'x': 'Load ID', 'y': 'Transaction Count'}
+                        )
+                        fig.update_layout(height=350)
+                        st.plotly_chart(fig, key="perf_load_dist_v2")
+            else:
+                # Show type distribution if available
+                if 'Type' in df.columns:
+                    type_dist = df['Type'].value_counts().head(10)
+                    fig = px.pie(
+                        values=type_dist.values,
+                        names=type_dist.index,
+                        title='Transaction Type Distribution'
+                    )
+                    fig.update_layout(height=350)
+                    st.plotly_chart(fig, key="perf_type_dist_v2")
+                elif 'LoadID' in df.columns:
+                    load_dist = df['LoadID'].value_counts().head(15)
+                    fig = px.bar(
+                        x=load_dist.index,
+                        y=load_dist.values,
+                        title='Top 15 Loads by Activity'
+                    )
+                    fig.update_layout(height=350)
+                    st.plotly_chart(fig, key="perf_load_alt")
+        
+        with col2:
+            # Performance by category
+            if 'Type' in df.columns and financial_cols:
+                try:
+                    df['TempAmount'] = pd.to_numeric(df[financial_cols[0]], errors='coerce')
+                    type_performance = df.groupby('Type')['TempAmount'].agg(['sum', 'mean', 'count'])
+                    type_performance = type_performance[type_performance['sum'] > 0].nlargest(10, 'sum')
+                    
+                    fig = px.bar(
+                        x=type_performance.index,
+                        y=type_performance['sum'],
+                        title='Performance by Category',
+                        labels={'x': 'Category', 'y': 'Total Value'},
+                        color=type_performance['sum'],
+                        color_continuous_scale='Greens'
+                    )
+                    fig.update_layout(height=350, showlegend=False)
+                    st.plotly_chart(fig, key="perf_category_v2")
+                except:
+                    pass
+            elif 'LoadID' in df.columns:
+                # Load frequency distribution
+                load_freq = df['LoadID'].value_counts()
+                freq_bins = pd.cut(load_freq, bins=[0, 1, 5, 10, 20, 100], 
+                                 labels=['1', '2-5', '6-10', '11-20', '20+'])
+                freq_dist = freq_bins.value_counts()
+                
+                fig = px.pie(
+                    values=freq_dist.values,
+                    names=freq_dist.index,
+                    title='Load Activity Distribution',
+                    color_discrete_sequence=px.colors.qualitative.Set2
+                )
+                fig.update_layout(height=350)
+                st.plotly_chart(fig, key="perf_freq_dist_v2")
+        
+        # Performance insights
+        st.markdown("##### 🎯 Performance Insights")
+        
+        if 'LoadID' in df.columns:
+            load_stats = df['LoadID'].value_counts()
+            high_activity = (load_stats > load_stats.quantile(0.75)).sum()
+            
+            if high_activity > 10:
+                st.warning(f"⚠️ **Optimization Needed**: {high_activity} loads have high transaction counts - consolidation could save ${high_activity * 500:,}")
+            
+            if avg_records_per_load > 10:
+                st.info(f"📊 **Process Improvement**: Average {avg_records_per_load:.1f} records per load vs target of 5")
+        
+        if quality_score < 80:
+            st.error(f"❌ **Data Quality Issue**: {100-quality_score:.0f}% missing data - impacts analysis accuracy")
+        elif quality_score > 95:
+            st.success(f"✅ **Excellent Data Quality**: {quality_score:.0f}% complete data")
     
     with tab2:
         st.markdown("#### Carrier Analysis")
