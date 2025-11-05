@@ -362,6 +362,59 @@ class FastFileProcessor:
         return 'General'
     
     @staticmethod
+    def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+        """Standardize column names for consistency"""
+        column_mappings = {
+            # Specific column mappings for your data
+            'loadid': 'Load_ID',
+            'load_id': 'Load_ID',
+            'loadnumber': 'Load_ID',
+            'load_number': 'Load_ID',
+            'invoicenumber': 'Invoice_Number',
+            'rate': 'Rate_Amount',
+            'charge': 'Charge_Amount',
+            'type': 'Charge_Type',
+            'description': 'Description',
+            'weight': 'Weight',
+            'class': 'Class',
+            
+            # Standard mappings
+            'origin': 'Origin_City',
+            'pickup_city': 'Origin_City',
+            'from_city': 'Origin_City',
+            'ship_from': 'Origin_City',
+            'destination': 'Destination_City',
+            'dest': 'Destination_City',
+            'delivery_city': 'Destination_City',
+            'to_city': 'Destination_City',
+            'ship_to': 'Destination_City',
+            'carrier': 'Selected_Carrier',
+            'carrier_name': 'Selected_Carrier',
+            'scac': 'Selected_Carrier',
+            'cost': 'Total_Cost',
+            'total_charge': 'Total_Cost',
+            'amount': 'Total_Cost',
+            'pickup_date': 'Pickup_Date',
+            'delivery_date': 'Delivery_Date',
+            'customer': 'Customer_ID',
+            'service_type': 'Service_Type',
+            'mode': 'Service_Type',
+            'equipment': 'Equipment_Type'
+        }
+        
+        df_copy = df.copy()
+        
+        # Standardize column names
+        for col in df.columns:
+            col_lower = col.lower().replace(' ', '_').replace('-', '_')
+            for old, new in column_mappings.items():
+                if old == col_lower and new not in df_copy.columns:
+                    df_copy.rename(columns={col: new}, inplace=True)
+                    break
+        
+        return df_copy
+    
+    @staticmethod
     def merge_related_tables(data_cache: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         """Merge related tables based on the relation document structure"""
         
