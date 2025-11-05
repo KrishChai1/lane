@@ -365,9 +365,19 @@ class FastFileProcessor:
     def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
         """Standardize column names"""
         column_mappings = {
+            # Your specific column mappings
+            'loadid': 'Load_ID',
+            'invoicenumber': 'Invoice_Number',
+            'rate': 'Rate_Amount',
+            'charge': 'Charge_Amount',
+            'type': 'Charge_Type',
+            'description': 'Description',
+            'weight': 'Weight',
+            'class': 'Class',
+            
+            # Standard mappings
             'loadnumber': 'Load_ID',
             'load_number': 'Load_ID',
-            'loadid': 'Load_ID',
             'load_id': 'Load_ID',
             'origin': 'Origin_City',
             'pickup_city': 'Origin_City',
@@ -378,7 +388,6 @@ class FastFileProcessor:
             'cost': 'Total_Cost',
             'total_charge': 'Total_Cost',
             'amount': 'Total_Cost',
-            'weight': 'Total_Weight_lbs',
             'pickup_date': 'Pickup_Date',
             'delivery_date': 'Delivery_Date',
             'customer': 'Customer_ID',
@@ -387,11 +396,13 @@ class FastFileProcessor:
         }
         
         df_copy = df.copy()
+        
+        # First, standardize existing column names
         for col in df.columns:
             col_lower = col.lower().replace(' ', '_').replace('-', '_')
             for old, new in column_mappings.items():
-                if old in col_lower and new not in df_copy.columns:
-                    df_copy[new] = df[col]
+                if old == col_lower and new not in df_copy.columns:
+                    df_copy.rename(columns={col: new}, inplace=True)
                     break
         
         return df_copy
@@ -700,7 +711,7 @@ def display_dashboard():
     # Initialize AI Agent
     ai_agent = AIOptimizationAgent()
     
-    # Metrics row
+    # Metrics row - adapt to available columns
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
@@ -708,32 +719,51 @@ def display_dashboard():
         st.metric("📦 Total Records", f"{total_records:,}")
     
     with col2:
-        if 'Total_Cost' in df.columns:
-            total_cost = df['Total_Cost'].sum()
-            st.metric("💰 Total Spend", f"${total_cost/1000000:.1f}M")
-        else:
-            st.metric("💰 Total Spend", "N/A")
+        # Try to find cost/charge columns
+        cost_found = False
+        for col in df.columns:
+            if any(term in col.lower() for term in ['cost', 'charge', 'rate', 'amount', 'sum']):
+                try:
+                    total_cost = pd.to_numeric(df[col], errors='coerce').sum()
+                    if total_cost > 0:
+                        st.metric("💰 Total Charges", f"${total_cost/1000:.0f}K")
+                        cost_found = True
+                        break
+                except:
+                    pass
+        if not cost_found:
+            st.metric("💰 Total Charges", "N/A")
     
     with col3:
-        if 'Origin_City' in df.columns and 'Destination_City' in df.columns:
-            unique_lanes = df.groupby(['Origin_City', 'Destination_City']).ngroups
-            st.metric("🛤️ Active Lanes", f"{unique_lanes}")
+        if 'LoadID' in df.columns:
+            unique_loads = df['LoadID'].nunique()
+            st.metric("🚚 Unique Loads", f"{unique_loads:,}")
+        elif 'Load_ID' in df.columns:
+            unique_loads = df['Load_ID'].nunique()
+            st.metric("🚚 Unique Loads", f"{unique_loads:,}")
         else:
-            st.metric("🛤️ Active Lanes", "N/A")
+            st.metric("🚚 Records", f"{len(df):,}")
     
     with col4:
-        if 'Selected_Carrier' in df.columns:
+        if 'InvoiceNumber' in df.columns:
+            unique_invoices = df['InvoiceNumber'].nunique()
+            st.metric("📄 Invoices", f"{unique_invoices:,}")
+        elif 'Selected_Carrier' in df.columns:
             unique_carriers = df['Selected_Carrier'].nunique()
             st.metric("🚛 Carriers", f"{unique_carriers}")
         else:
-            st.metric("🚛 Carriers", "N/A")
+            st.metric("📊 Columns", len(df.columns))
     
     with col5:
-        if 'On_Time_Delivery' in df.columns:
+        if 'Type' in df.columns:
+            unique_types = df['Type'].nunique()
+            st.metric("📋 Charge Types", f"{unique_types}")
+        elif 'On_Time_Delivery' in df.columns:
             on_time = (df['On_Time_Delivery'] == 'Yes').mean() * 100
             st.metric("⏰ On-Time %", f"{on_time:.0f}%")
         else:
-            st.metric("⏰ On-Time %", "N/A")
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            st.metric("🔢 Numeric Cols", len(numeric_cols))
     
     with col6:
         total_memory = sum(st.session_state.quick_stats[k]['memory'] for k in st.session_state.quick_stats)
@@ -807,6 +837,271 @@ def display_dashboard():
                 st.info(f"**{table_type}**\n{len(data):,} records")
 
 def display_lane_analysis():
+    """Comprehensive lane analysis - adapted for various data types"""
+    
+    st.markdown("### 🛤️ Data Analysis")
+    
+    if not st.session_state.data_cache:
+        st.warning("Please upload data files first")
+        return
+    
+    # Get the first/largest table
+    df = None
+    for key, data in st.session_state.data_cache.items():
+        df = data
+        break
+    
+    if df is None:
+        st.warning("No data available for analysis")
+        return
+    
+    # Show data structure info
+    with st.expander("📊 Data Structure", expanded=True):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Records", f"{len(df):,}")
+        with col2:
+            st.metric("Columns", len(df.columns))
+        with col3:
+            st.metric("Memory Size", f"{df.memory_usage(deep=True).sum() / 1024 / 1024:.1f} MB")
+        
+        st.write("**Column Names:**")
+        cols = st.columns(4)
+        for idx, col in enumerate(df.columns):
+            with cols[idx % 4]:
+                st.write(f"• {col}")
+    
+    # Check what type of data we have and show appropriate analysis
+    if 'LoadID' in df.columns or 'Load_ID' in df.columns:
+        # This appears to be load/invoice data
+        load_col = 'LoadID' if 'LoadID' in df.columns else 'Load_ID'
+        
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Load Analysis", "💰 Charge Analysis", "📈 Trends", "📋 Details"
+        ])
+        
+        with tab1:
+            st.markdown("#### Load Analysis")
+            
+            # Count unique loads
+            unique_loads = df[load_col].nunique()
+            total_records = len(df)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Unique Loads", f"{unique_loads:,}")
+            with col2:
+                st.metric("Total Records", f"{total_records:,}")
+            with col3:
+                st.metric("Avg Records/Load", f"{total_records/max(unique_loads, 1):.1f}")
+            with col4:
+                if 'InvoiceNumber' in df.columns:
+                    unique_invoices = df['InvoiceNumber'].nunique()
+                    st.metric("Unique Invoices", f"{unique_invoices:,}")
+            
+            # Top loads by record count
+            st.markdown("##### Top Loads by Activity")
+            load_counts = df[load_col].value_counts().head(20)
+            
+            fig = px.bar(
+                x=load_counts.values,
+                y=load_counts.index,
+                orientation='h',
+                title=f'Top 20 {load_col}s by Record Count',
+                labels={'x': 'Number of Records', 'y': load_col}
+            )
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, key="load_analysis_bar")
+            
+            # Summary table
+            st.dataframe(
+                load_counts.reset_index().rename(columns={'index': load_col, load_col: 'Record Count'}),
+                width="auto",
+                height=300
+            )
+        
+        with tab2:
+            st.markdown("#### Charge Analysis")
+            
+            # Analyze charges/rates
+            charge_cols = []
+            for col in df.columns:
+                if any(term in col.lower() for term in ['charge', 'rate', 'cost', 'amount', 'sum']):
+                    charge_cols.append(col)
+            
+            if charge_cols:
+                st.write(f"Found {len(charge_cols)} charge-related columns:")
+                
+                for col in charge_cols[:5]:  # Show first 5
+                    try:
+                        # Convert to numeric
+                        numeric_col = pd.to_numeric(df[col], errors='coerce')
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric(f"{col} - Total", f"${numeric_col.sum():,.2f}")
+                        with col2:
+                            st.metric("Average", f"${numeric_col.mean():,.2f}")
+                        with col3:
+                            st.metric("Median", f"${numeric_col.median():,.2f}")
+                        with col4:
+                            st.metric("Max", f"${numeric_col.max():,.2f}")
+                        
+                        # Distribution chart
+                        fig = px.histogram(
+                            numeric_col.dropna(),
+                            nbins=30,
+                            title=f'Distribution of {col}',
+                            labels={'value': col, 'count': 'Frequency'}
+                        )
+                        fig.update_layout(height=300)
+                        st.plotly_chart(fig, key=f"charge_hist_{col}")
+                        
+                    except Exception as e:
+                        st.info(f"Could not analyze {col}: {str(e)}")
+            
+            # Type analysis if available
+            if 'Type' in df.columns:
+                st.markdown("##### Charge Types")
+                type_counts = df['Type'].value_counts().head(10)
+                
+                fig = px.pie(
+                    values=type_counts.values,
+                    names=type_counts.index,
+                    title='Distribution of Charge Types'
+                )
+                st.plotly_chart(fig, key="type_pie")
+        
+        with tab3:
+            st.markdown("#### Trend Analysis")
+            
+            # Look for date columns
+            date_cols = [col for col in df.columns if 'date' in col.lower()]
+            
+            if date_cols:
+                date_col = date_cols[0]
+                try:
+                    df['Date'] = pd.to_datetime(df[date_col], errors='coerce')
+                    
+                    # Daily counts
+                    daily_counts = df.groupby(df['Date'].dt.date).size().reset_index()
+                    daily_counts.columns = ['Date', 'Count']
+                    
+                    fig = px.line(
+                        daily_counts,
+                        x='Date',
+                        y='Count',
+                        title='Daily Record Count',
+                        line_shape='spline'
+                    )
+                    fig.update_layout(height=400)
+                    st.plotly_chart(fig, key="trend_line")
+                    
+                except:
+                    st.info("Unable to create time-based analysis")
+            else:
+                st.info("No date columns found for trend analysis")
+            
+            # Load-based trends
+            if charge_cols:
+                st.markdown("##### Charges by Load")
+                
+                # Sum charges by load
+                for col in charge_cols[:1]:  # Use first charge column
+                    try:
+                        numeric_col = pd.to_numeric(df[col], errors='coerce')
+                        df['Numeric_Charge'] = numeric_col
+                        
+                        load_charges = df.groupby(load_col)['Numeric_Charge'].sum().reset_index()
+                        load_charges = load_charges.nlargest(20, 'Numeric_Charge')
+                        
+                        fig = px.bar(
+                            load_charges,
+                            x=load_col,
+                            y='Numeric_Charge',
+                            title=f'Top 20 Loads by Total {col}'
+                        )
+                        fig.update_layout(height=400)
+                        st.plotly_chart(fig, key="load_charges_bar")
+                        
+                    except:
+                        pass
+        
+        with tab4:
+            st.markdown("#### Detailed Data View")
+            
+            # Filtering options
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Filter by load
+                selected_loads = st.multiselect(
+                    "Filter by Load ID",
+                    options=df[load_col].unique()[:100],  # First 100 loads
+                    default=[]
+                )
+            
+            with col2:
+                # Filter by type if available
+                if 'Type' in df.columns:
+                    selected_types = st.multiselect(
+                        "Filter by Type",
+                        options=df['Type'].unique(),
+                        default=[]
+                    )
+                else:
+                    selected_types = []
+            
+            # Apply filters
+            filtered_df = df.copy()
+            if selected_loads:
+                filtered_df = filtered_df[filtered_df[load_col].isin(selected_loads)]
+            if selected_types:
+                filtered_df = filtered_df[filtered_df['Type'].isin(selected_types)]
+            
+            # Show filtered data
+            st.write(f"Showing {len(filtered_df)} records")
+            st.dataframe(
+                filtered_df.head(500),
+                width="auto",
+                height=400
+            )
+            
+            # Summary statistics for filtered data
+            if len(filtered_df) > 0:
+                st.markdown("##### Summary Statistics")
+                
+                numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns
+                if len(numeric_cols) > 0:
+                    st.dataframe(
+                        filtered_df[numeric_cols].describe(),
+                        width="auto"
+                    )
+    
+    else:
+        # Generic analysis for unknown data structure
+        st.info("This appears to be a custom data format. Showing generic analysis...")
+        
+        # Basic statistics
+        st.markdown("#### Data Overview")
+        
+        # Numeric columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            st.write("**Numeric Columns Summary:**")
+            st.dataframe(df[numeric_cols].describe(), width="auto")
+        
+        # Text columns
+        text_cols = df.select_dtypes(include=['object']).columns
+        if len(text_cols) > 0:
+            st.write("**Text Columns (unique values):**")
+            for col in text_cols[:5]:
+                unique_count = df[col].nunique()
+                st.write(f"• {col}: {unique_count} unique values")
+        
+        # Sample data
+        st.write("**Sample Data (first 100 rows):**")
+        st.dataframe(df.head(100), width="auto", height=400)
     """Comprehensive lane analysis"""
     
     st.markdown("### 🛤️ Comprehensive Lane Analysis")
