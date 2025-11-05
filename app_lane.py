@@ -1744,8 +1744,6 @@ def generate_executive_summary(df, ai_agent):
     """
     
     return html_report
-                
-                st.write("Features:", model_info['features'])
 
 def generate_sample_data() -> Dict[str, pd.DataFrame]:
     """Generate comprehensive sample TMS data"""
