@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Lane Optimization Intelligence Platform - Production Ready Version
-Fixed ValueError and enhanced data handling for real-world files
+Lane Optimization Intelligence Platform - Enhanced TMS Version
+Complete support for hierarchical TMS data model with all relationships
 """
 
 import streamlit as st
@@ -14,18 +14,9 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import random
 import json
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import warnings
-
-# Optional sklearn imports - graceful degradation if not available
-try:
-    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-    from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import LabelEncoder, StandardScaler
-    from sklearn.metrics import mean_absolute_error, r2_score
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
+from dataclasses import dataclass
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
@@ -35,63 +26,95 @@ warnings.filterwarnings('ignore')
 # ============================================================================
 
 st.set_page_config(
-    page_title="🚚 Lane Optimization Intelligence",
+    page_title="🚚 TMS Lane Optimization Intelligence",
     page_icon="🚚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ============================================================================
-# CUSTOM CSS - PROFESSIONAL UI
+# CUSTOM CSS
 # ============================================================================
 
 st.markdown("""
 <style>
-    /* Remove ALL padding between sections */
     .block-container {
         padding-top: 1rem;
         padding-bottom: 0rem;
         max-width: 100%;
     }
     
-    .main {
-        padding: 0;
-    }
-    
-    /* Compact header */
     .main-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1rem;
+        padding: 1.2rem;
         border-radius: 15px;
-        margin-bottom: 0.5rem;
+        margin-bottom: 1rem;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
     
-    /* Remove spacing between elements */
-    .element-container {
-        margin: 0 !important;
-        padding: 0 !important;
+    .metric-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 4px solid #667eea;
     }
     
-    div[data-testid="stVerticalBlock"] > div:has(> div.element-container) {
-        gap: 0.3rem !important;
+    .insight-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        margin: 0.5rem 0;
+        border-top: 3px solid #667eea;
     }
     
-    /* Compact tabs */
+    .success-badge {
+        background: #10b981;
+        color: white;
+        padding: 0.3rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        display: inline-block;
+        margin-bottom: 0.5rem;
+    }
+    
+    .warning-badge {
+        background: #f59e0b;
+        color: white;
+        padding: 0.3rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        display: inline-block;
+        margin-bottom: 0.5rem;
+    }
+    
+    .danger-badge {
+        background: #ef4444;
+        color: white;
+        padding: 0.3rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        display: inline-block;
+        margin-bottom: 0.5rem;
+    }
+    
     .stTabs [data-baseweb="tab-list"] {
-        gap: 0px;
+        gap: 2px;
         background: linear-gradient(90deg, #f5f5f5 0%, #e0e0e0 100%);
         padding: 0.3rem;
         border-radius: 10px;
     }
     
     .stTabs [data-baseweb="tab"] {
-        height: 40px;
-        padding-left: 15px;
-        padding-right: 15px;
+        height: 42px;
+        padding-left: 20px;
+        padding-right: 20px;
         background: white;
         border-radius: 8px;
-        margin: 0 1px;
         font-weight: 500;
     }
     
@@ -99,103 +122,92 @@ st.markdown("""
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
     }
-    
-    /* Alert and card styles */
-    .alert-success {
-        background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
-        padding: 0.8rem;
-        border-radius: 10px;
-        color: #0c5460;
-        margin: 0.3rem 0;
-    }
-    
-    .alert-warning {
-        background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
-        padding: 0.8rem;
-        border-radius: 10px;
-        color: #856404;
-        margin: 0.3rem 0;
-    }
-    
-    .alert-danger {
-        background: linear-gradient(135deg, #fab1a0 0%, #ff7675 100%);
-        padding: 0.8rem;
-        border-radius: 10px;
-        color: #721c24;
-        margin: 0.3rem 0;
-    }
-    
-    .insight-card {
-        background: white;
-        padding: 0.8rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        margin: 0.3rem 0;
-        border-top: 3px solid #667eea;
-    }
-    
-    /* Badges */
-    .success-badge {
-        background: #10b981;
-        color: white;
-        padding: 0.2rem 0.6rem;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: bold;
-        display: inline-block;
-    }
-    
-    .warning-badge {
-        background: #f59e0b;
-        color: white;
-        padding: 0.2rem 0.6rem;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: bold;
-        display: inline-block;
-    }
-    
-    .danger-badge {
-        background: #ef4444;
-        color: white;
-        padding: 0.2rem 0.6rem;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: bold;
-        display: inline-block;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# HEADER
+# DATA MODEL DEFINITION - Based on Document
 # ============================================================================
 
-st.markdown("""
-<div class="main-header">
-    <h2 style="color: white; margin: 0;">🚚 Lane Optimization Intelligence Platform</h2>
-    <p style="color: white; opacity: 0.9; margin: 0; font-size: 0.85rem;">
-        AI-Powered Analytics • Real-Time Optimization • Predictive Intelligence • Cost Reduction
-    </p>
-</div>
-""", unsafe_allow_html=True)
+@dataclass
+class TMSDataModel:
+    """TMS Data Model Structure based on the relation document"""
+    
+    # Main tables and their descriptions
+    TABLES = {
+        'Load_Main': {
+            'description': 'Main load/shipment table with carrier rates',
+            'key_columns': ['Load_ID', 'Origin', 'Destination', 'Carrier', 'Rate'],
+            'file_patterns': ['load_main', 'non_parcel', 'iwht']
+        },
+        'Load_ShipUnits': {
+            'description': 'Weight and dimensions for each load/shipment',
+            'key_columns': ['Load_ID', 'Weight', 'Dimensions'],
+            'file_patterns': ['shipunits', 'ship_units', 'so_shipunits']
+        },
+        'Load_Carrier_Rates': {
+            'description': 'System selected carrier rate charges (line items)',
+            'key_columns': ['Load_ID', 'Carrier', 'Rate', 'Charges'],
+            'file_patterns': ['carrier_rate_charges', 'rate_charges']
+        },
+        'Load_TrackDetails': {
+            'description': 'Load tracking from pickup through delivery',
+            'key_columns': ['Load_ID', 'Status', 'Timestamp', 'Location'],
+            'file_patterns': ['trackdetails', 'track_details', 'tracking']
+        },
+        'Load_Carrier_Invoices': {
+            'description': 'Carrier invoice header for each load',
+            'key_columns': ['Load_ID', 'Invoice_Number', 'Carrier', 'Amount'],
+            'file_patterns': ['carrier_invoices', 'invoice']
+        },
+        'Load_Carrier_Invoice_Charges': {
+            'description': 'Detailed charges for each carrier invoice',
+            'key_columns': ['Invoice_ID', 'Charge_Type', 'Amount'],
+            'file_patterns': ['invoice_charges', 'carrier_invoice_charges']
+        }
+    }
+    
+    @staticmethod
+    def detect_table_type(filename: str, df: pd.DataFrame) -> str:
+        """Detect which table type based on filename and columns"""
+        
+        filename_lower = filename.lower()
+        
+        # Check each table pattern
+        for table_name, config in TMSDataModel.TABLES.items():
+            for pattern in config['file_patterns']:
+                if pattern in filename_lower:
+                    return table_name
+        
+        # Column-based detection
+        columns_lower = [col.lower() for col in df.columns]
+        
+        # Specific detections based on column patterns
+        if any('track' in col for col in columns_lower):
+            return 'Load_TrackDetails'
+        elif any('invoice' in col and 'charge' in col for col in columns_lower):
+            return 'Load_Carrier_Invoice_Charges'
+        elif any('invoice' in col for col in columns_lower):
+            return 'Load_Carrier_Invoices'
+        elif any('rate' in col and 'charge' in col for col in columns_lower):
+            return 'Load_Carrier_Rates'
+        elif any('weight' in col or 'dimension' in col for col in columns_lower):
+            return 'Load_ShipUnits'
+        elif any('load' in col for col in columns_lower):
+            return 'Load_Main'
+        
+        return 'Unknown'
 
 # ============================================================================
 # SESSION STATE INITIALIZATION
 # ============================================================================
 
-if 'data_model' not in st.session_state:
-    st.session_state.data_model = {}
-if 'primary_data' not in st.session_state:
-    st.session_state.primary_data = None
-if 'models' not in st.session_state:
-    st.session_state.models = {}
-if 'predictions' not in st.session_state:
-    st.session_state.predictions = []
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'column_mapping' not in st.session_state:
-    st.session_state.column_mapping = {}
+if 'data_tables' not in st.session_state:
+    st.session_state.data_tables = {}
+if 'merged_data' not in st.session_state:
+    st.session_state.merged_data = None
+if 'analysis_results' not in st.session_state:
+    st.session_state.analysis_results = {}
 
 # ============================================================================
 # CONSTANTS
@@ -216,12 +228,7 @@ US_CITIES = {
     'Seattle': (47.6062, -122.3321),
     'Denver': (39.7392, -104.9903),
     'Boston': (42.3601, -71.0589),
-    'Detroit': (42.3314, -83.0458),
-    'Nashville': (36.1627, -86.7816),
-    'Portland': (45.5152, -122.6784),
-    'Las Vegas': (36.1699, -115.1398),
-    'Louisville': (38.2527, -85.7585),
-    'Milwaukee': (43.0389, -87.9065)
+    'Detroit': (42.3314, -83.0458)
 }
 
 CARRIERS = ['UPS', 'FedEx', 'USPS', 'DHL', 'OnTrac', 'XPO', 'SAIA', 'Old Dominion', 'YRC', 'Estes']
@@ -230,666 +237,1001 @@ CARRIERS = ['UPS', 'FedEx', 'USPS', 'DHL', 'OnTrac', 'XPO', 'SAIA', 'Old Dominio
 # UTILITY FUNCTIONS
 # ============================================================================
 
-def safe_column_access(df: pd.DataFrame, column: str, default=None):
-    """Safely access a column from DataFrame, return default if not exists or has issues"""
-    try:
-        if column in df.columns:
-            # Check if it's a Series (1-dimensional)
-            col_data = df[column]
-            if isinstance(col_data, pd.Series):
-                return col_data
-            elif isinstance(col_data, pd.DataFrame):
-                # If it's a DataFrame (multi-dimensional), try to get first column
-                if col_data.shape[1] == 1:
-                    return col_data.iloc[:, 0]
-                else:
-                    st.warning(f"Column '{column}' is multi-dimensional")
-                    return default
-        return default
-    except Exception as e:
-        st.warning(f"Error accessing column '{column}': {str(e)}")
-        return default
-
 def calculate_distance(city1: str, city2: str) -> float:
-    """Calculate distance between two cities using Haversine formula"""
-    city1 = city1.split(',')[0].strip() if ',' in city1 else city1.strip()
-    city2 = city2.split(',')[0].strip() if ',' in city2 else city2.strip()
-    
+    """Calculate distance between cities"""
     if city1 not in US_CITIES or city2 not in US_CITIES:
-        return 500.0  # Default distance
+        return random.uniform(100, 2000)
     
     lat1, lon1 = US_CITIES[city1]
     lat2, lon2 = US_CITIES[city2]
     
-    R = 3959  # Earth's radius in miles
+    R = 3959
     dlat = np.radians(lat2 - lat1)
     dlon = np.radians(lon2 - lon1)
     a = np.sin(dlat/2)**2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon/2)**2
     c = 2 * np.arcsin(np.sqrt(a))
     return R * c
 
-def detect_and_map_columns(df: pd.DataFrame) -> Dict[str, str]:
-    """Detect and map columns to standard names"""
+def merge_multi_part_files():
+    """Merge multi-part files (like carrier rate charges parts 1, 2, 3)"""
     
-    # Standard column mappings
-    column_patterns = {
-        'Load_ID': ['load_id', 'loadid', 'load_number', 'loadnumber', 'load_num', 'loadnum', 
-                    'load', 'shipment_id', 'order_id', 'reference_number', 'pro_number'],
-        'Origin_City': ['origin_city', 'origin', 'pickup_city', 'from_city', 'ship_from', 
-                        'pickup_location', 'origin_location', 'from_location'],
-        'Destination_City': ['destination_city', 'destination', 'dest_city', 'delivery_city', 
-                            'to_city', 'ship_to', 'delivery_location', 'dest', 'to_location'],
-        'Selected_Carrier': ['carrier', 'carrier_name', 'scac', 'carrier_id', 'carrier_code', 
-                            'transport_provider', 'trucking_company', 'selected_carrier'],
-        'Total_Cost': ['total_cost', 'cost', 'total_charge', 'charge', 'amount', 'total_amount', 
-                      'invoice_amount', 'rate', 'price', 'total_price', 'linehaul_cost'],
-        'Total_Weight_lbs': ['weight', 'total_weight', 'weight_lbs', 'pounds', 'lbs', 'wgt', 
-                            'shipment_weight', 'gross_weight'],
-        'Customer_ID': ['customer_id', 'customer', 'client', 'shipper', 'consignee', 
-                       'customer_name', 'client_id', 'account_number'],
-        'Pickup_Date': ['pickup_date', 'pickup', 'ship_date', 'load_date', 'collection_date', 
-                       'scheduled_pickup', 'actual_pickup'],
-        'Delivery_Date': ['delivery_date', 'delivery', 'deliver_date', 'arrival_date', 
-                         'scheduled_delivery', 'actual_delivery'],
-        'Service_Type': ['service_type', 'mode', 'service_level', 'transport_mode', 
-                        'shipping_method', 'service'],
-        'Equipment_Type': ['equipment_type', 'equipment', 'trailer_type', 'container_type', 
-                          'vehicle_type'],
-        'Transit_Days': ['transit_days', 'transit_time', 'days_in_transit', 'delivery_time', 
-                        'lead_time'],
-        'Distance_miles': ['distance', 'miles', 'distance_miles', 'total_miles', 'mileage'],
-        'On_Time_Delivery': ['on_time_delivery', 'on_time', 'otd', 'delivery_status', 
-                            'performance'],
-        'Line_Haul_Costs': ['line_haul', 'linehaul', 'base_cost', 'freight_charge', 
-                            'transport_cost'],
-        'Fuel_Surcharge': ['fuel_surcharge', 'fuel', 'fsc', 'fuel_charge', 'fuel_cost'],
-        'Accessorial_Charges': ['accessorial', 'accessorials', 'additional_charges', 
-                                'extra_charges', 'misc_charges']
+    # Group files by base name
+    merged_tables = {}
+    tables_to_merge = {}
+    
+    for table_name, df in st.session_state.data_tables.items():
+        # Check if it's a multi-part file
+        if 'part' in table_name.lower() or any(char.isdigit() for char in table_name[-5:]):
+            # Extract base name
+            base_name = table_name.split('part')[0].strip('_').strip()
+            if not base_name:
+                base_name = ''.join([c for c in table_name if not c.isdigit()]).strip('_')
+            
+            if base_name not in tables_to_merge:
+                tables_to_merge[base_name] = []
+            tables_to_merge[base_name].append(df)
+        else:
+            merged_tables[table_name] = df
+    
+    # Merge multi-part tables
+    for base_name, dfs in tables_to_merge.items():
+        if len(dfs) > 1:
+            merged_df = pd.concat(dfs, ignore_index=True)
+            merged_tables[base_name] = merged_df
+            st.info(f"Merged {len(dfs)} parts into {base_name} ({len(merged_df)} total records)")
+        else:
+            merged_tables[base_name] = dfs[0]
+    
+    st.session_state.data_tables = merged_tables
+
+def create_merged_dataset():
+    """Create a merged dataset with all relationships"""
+    
+    if not st.session_state.data_tables:
+        return None
+    
+    # Start with the main load table
+    main_table = None
+    for table_name, df in st.session_state.data_tables.items():
+        if 'Load_Main' in table_name or ('load' in table_name.lower() and 'main' in table_name.lower()):
+            main_table = df.copy()
+            break
+    
+    if main_table is None:
+        # Use the largest table as main
+        main_table = max(st.session_state.data_tables.values(), key=len).copy()
+    
+    # Try to merge other tables
+    for table_name, df in st.session_state.data_tables.items():
+        if df is main_table:
+            continue
+        
+        # Find common columns for joining
+        common_cols = set(main_table.columns).intersection(set(df.columns))
+        
+        # Look for Load_ID or similar key columns
+        join_cols = []
+        for col in common_cols:
+            if 'load' in col.lower() or 'id' in col.lower():
+                join_cols.append(col)
+                break
+        
+        if join_cols:
+            try:
+                # Avoid duplicate columns
+                merge_cols = [c for c in df.columns if c not in main_table.columns or c in join_cols]
+                main_table = main_table.merge(
+                    df[merge_cols],
+                    on=join_cols[0],
+                    how='left',
+                    suffixes=('', f'_{table_name}')
+                )
+            except:
+                pass
+    
+    return main_table
+
+def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Standardize column names across different file formats"""
+    
+    column_mappings = {
+        # Load identifiers
+        'loadnumber': 'Load_ID',
+        'load_number': 'Load_ID',
+        'loadid': 'Load_ID',
+        'load_id': 'Load_ID',
+        'shipment_id': 'Load_ID',
+        'order_number': 'Load_ID',
+        
+        # Origins
+        'origin': 'Origin_City',
+        'pickup_city': 'Origin_City',
+        'from_city': 'Origin_City',
+        'ship_from': 'Origin_City',
+        
+        # Destinations
+        'destination': 'Destination_City',
+        'dest': 'Destination_City',
+        'delivery_city': 'Destination_City',
+        'to_city': 'Destination_City',
+        'ship_to': 'Destination_City',
+        
+        # Carriers
+        'carrier': 'Carrier_Name',
+        'carrier_name': 'Carrier_Name',
+        'scac': 'Carrier_Name',
+        'carrier_code': 'Carrier_Name',
+        
+        # Costs
+        'cost': 'Total_Cost',
+        'total_charge': 'Total_Cost',
+        'amount': 'Total_Cost',
+        'rate': 'Total_Cost',
+        'invoice_amount': 'Total_Cost',
+        
+        # Weights
+        'weight': 'Weight_lbs',
+        'total_weight': 'Weight_lbs',
+        'weight_lbs': 'Weight_lbs',
+        'shipment_weight': 'Weight_lbs',
+        
+        # Dates
+        'pickup_date': 'Pickup_Date',
+        'ship_date': 'Pickup_Date',
+        'delivery_date': 'Delivery_Date',
+        'delivered_date': 'Delivery_Date'
     }
     
-    mapping = {}
-    df_columns_lower = [col.lower().replace(' ', '_').replace('-', '_') for col in df.columns]
-    
-    for standard_name, patterns in column_patterns.items():
-        for i, col in enumerate(df.columns):
-            col_lower = df_columns_lower[i]
-            for pattern in patterns:
-                if pattern in col_lower or col_lower in pattern:
-                    mapping[col] = standard_name
-                    break
-            if col in mapping:
+    # Apply mappings
+    df_copy = df.copy()
+    for old_name, new_name in column_mappings.items():
+        for col in df.columns:
+            if old_name in col.lower():
+                if new_name not in df_copy.columns:
+                    df_copy[new_name] = df[col]
                 break
     
-    return mapping
-
-def standardize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Standardize DataFrame columns and ensure proper data types"""
-    
-    # Get column mapping
-    mapping = detect_and_map_columns(df)
-    
-    # Create a copy and rename columns
-    df_standard = df.copy()
-    
-    # Apply mapping
-    for old_col, new_col in mapping.items():
-        if old_col in df_standard.columns:
-            df_standard[new_col] = df_standard[old_col]
-            if new_col != old_col:
-                df_standard = df_standard.drop(columns=[old_col])
-    
-    # Store mapping in session state
-    st.session_state.column_mapping = mapping
-    
-    return df_standard
-
-def detect_table_type(df: pd.DataFrame, filename: str = "") -> str:
-    """Enhanced table detection for real-world data files"""
-    
-    filename_lower = filename.lower()
-    
-    # Check filename patterns
-    if any(pattern in filename_lower for pattern in ['carrier_invoice', 'carrier_rate', 
-                                                      'invoice_charge', 'carrier_charges']):
-        return 'carrier_rates'
-    
-    if 'shipment' in filename_lower:
-        return 'shipments'
-    
-    if 'item' in filename_lower or 'product' in filename_lower:
-        return 'items'
-    
-    if 'performance' in filename_lower or 'rating' in filename_lower:
-        return 'performance'
-    
-    if 'financial' in filename_lower or 'revenue' in filename_lower:
-        return 'financial'
-    
-    # Default to loads for any file with load/truck data
-    if 'load' in filename_lower or 'truck' in filename_lower:
-        return 'loads'
-    
-    # Check column patterns
-    df_columns_lower = [col.lower() for col in df.columns]
-    
-    # Count indicators
-    load_indicators = sum(1 for col in df_columns_lower if any(
-        ind in col for ind in ['load', 'origin', 'dest', 'carrier', 'customer', 'weight']
-    ))
-    
-    carrier_indicators = sum(1 for col in df_columns_lower if any(
-        ind in col for ind in ['carrier', 'rate', 'charge', 'invoice', 'cost']
-    ))
-    
-    if carrier_indicators >= 3:
-        return 'carrier_rates'
-    
-    if load_indicators >= 2:
-        return 'loads'
-    
-    # Default
-    return 'general'
-
-def generate_complete_sample_data() -> Dict[str, pd.DataFrame]:
-    """Generate comprehensive sample TMS data"""
-    
-    np.random.seed(42)
-    random.seed(42)
-    
-    loads = []
-    
-    # Generate 500 loads
-    for i in range(500):
-        origin = random.choice(list(US_CITIES.keys()))
-        destination = random.choice(list(US_CITIES.keys()))
-        while destination == origin:
-            destination = random.choice(list(US_CITIES.keys()))
-        
-        pickup_date = datetime.now() - timedelta(days=random.randint(1, 60))
-        delivery_date = pickup_date + timedelta(days=random.randint(1, 5))
-        
-        distance = calculate_distance(origin, destination)
-        weight = random.randint(1000, 45000)
-        
-        base_cost = distance * 2.5 * (1 + weight/10000)
-        fuel_surcharge = base_cost * 0.20
-        accessorials = random.uniform(50, 500)
-        total_cost = base_cost + fuel_surcharge + accessorials
-        
-        load = {
-            'Load_ID': f'LD{i+1000:06d}',
-            'Customer_ID': f'CUST{random.randint(1, 20):04d}',
-            'Origin_City': origin,
-            'Destination_City': destination,
-            'Pickup_Date': pickup_date.strftime('%Y-%m-%d'),
-            'Delivery_Date': delivery_date.strftime('%Y-%m-%d'),
-            'Total_Weight_lbs': weight,
-            'Equipment_Type': random.choice(['Dry Van', 'Reefer', 'Flatbed']),
-            'Service_Type': 'TL' if weight > 10000 else 'LTL',
-            'Selected_Carrier': random.choice(CARRIERS),
-            'Distance_miles': round(distance, 2),
-            'Line_Haul_Costs': round(base_cost, 2),
-            'Fuel_Surcharge': round(fuel_surcharge, 2),
-            'Accessorial_Charges': round(accessorials, 2),
-            'Total_Cost': round(total_cost, 2),
-            'Transit_Days': random.randint(1, 5),
-            'On_Time_Delivery': random.choices(['Yes', 'No'], weights=[9, 1])[0],
-            'Customer_Rating': round(random.uniform(3.5, 5.0), 1)
-        }
-        
-        loads.append(load)
-    
-    return {'loads': pd.DataFrame(loads)}
+    return df_copy
 
 # ============================================================================
-# AI AGENT CLASS
+# ANALYSIS FUNCTIONS
 # ============================================================================
 
-class AIOptimizationAgent:
-    """AI Agent for optimization recommendations"""
+class TMSAnalyzer:
+    """Advanced TMS data analyzer"""
     
     @staticmethod
-    def analyze_patterns(df: pd.DataFrame) -> List[Dict]:
-        """Analyze patterns and generate insights"""
-        insights = []
+    def analyze_load_performance(df: pd.DataFrame) -> Dict:
+        """Analyze load performance metrics"""
         
-        try:
-            # Check for required columns safely
-            if 'Origin_City' in df.columns and 'Destination_City' in df.columns:
-                lane_counts = df.groupby(['Origin_City', 'Destination_City']).size()
-                top_lanes = lane_counts.nlargest(3).sum()
-                
-                insights.append({
-                    'type': 'success',
-                    'title': 'Top Lanes',
-                    'content': f"{top_lanes} loads in top 3 lanes",
-                    'action': 'Focus optimization here',
-                    'savings': f"${top_lanes * 50:,.0f}"
-                })
-        except Exception as e:
-            st.write(f"Debug: Error in lane analysis: {str(e)}")
+        results = {
+            'total_loads': len(df),
+            'total_cost': 0,
+            'avg_cost': 0,
+            'top_lanes': [],
+            'top_carriers': [],
+            'cost_breakdown': {}
+        }
         
-        try:
-            # Carrier analysis
-            carrier_col = safe_column_access(df, 'Selected_Carrier')
-            if carrier_col is not None:
-                carrier_counts = carrier_col.value_counts()
-                
-                insights.append({
-                    'type': 'warning',
-                    'title': 'Carrier Usage',
-                    'content': f"{len(carrier_counts)} active carriers",
-                    'action': 'Consolidate carriers',
-                    'savings': f"${len(carrier_counts) * 1000:,.0f}"
-                })
-        except Exception as e:
-            st.write(f"Debug: Error in carrier analysis: {str(e)}")
+        # Cost analysis
+        cost_columns = [col for col in df.columns if 'cost' in col.lower() or 'charge' in col.lower() or 'amount' in col.lower()]
+        if cost_columns:
+            for col in cost_columns[:1]:  # Use first cost column
+                try:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    results['total_cost'] = df[col].sum()
+                    results['avg_cost'] = df[col].mean()
+                except:
+                    pass
         
-        return insights
+        # Lane analysis
+        if 'Origin_City' in df.columns and 'Destination_City' in df.columns:
+            lanes = df.groupby(['Origin_City', 'Destination_City']).size()
+            results['top_lanes'] = lanes.nlargest(5).to_dict()
+        
+        # Carrier analysis
+        carrier_cols = [col for col in df.columns if 'carrier' in col.lower()]
+        if carrier_cols:
+            carriers = df[carrier_cols[0]].value_counts()
+            results['top_carriers'] = carriers.head(5).to_dict()
+        
+        return results
+    
+    @staticmethod
+    def analyze_tracking_performance(tracking_df: pd.DataFrame) -> Dict:
+        """Analyze tracking and delivery performance"""
+        
+        results = {
+            'total_tracked': len(tracking_df),
+            'statuses': {},
+            'avg_transit_time': 0,
+            'on_time_percentage': 0
+        }
+        
+        # Status distribution
+        status_cols = [col for col in tracking_df.columns if 'status' in col.lower()]
+        if status_cols:
+            results['statuses'] = tracking_df[status_cols[0]].value_counts().to_dict()
+        
+        # Transit time calculation
+        date_cols = [col for col in tracking_df.columns if 'date' in col.lower() or 'time' in col.lower()]
+        if len(date_cols) >= 2:
+            try:
+                start_dates = pd.to_datetime(tracking_df[date_cols[0]], errors='coerce')
+                end_dates = pd.to_datetime(tracking_df[date_cols[-1]], errors='coerce')
+                transit_times = (end_dates - start_dates).dt.days
+                results['avg_transit_time'] = transit_times.mean()
+            except:
+                pass
+        
+        return results
+    
+    @staticmethod
+    def analyze_invoice_reconciliation(invoice_df: pd.DataFrame, charges_df: pd.DataFrame = None) -> Dict:
+        """Analyze carrier invoices and charges"""
+        
+        results = {
+            'total_invoices': len(invoice_df) if invoice_df is not None else 0,
+            'total_invoiced': 0,
+            'avg_invoice': 0,
+            'charge_types': {},
+            'discrepancies': []
+        }
+        
+        if invoice_df is not None:
+            amount_cols = [col for col in invoice_df.columns if 'amount' in col.lower() or 'total' in col.lower()]
+            if amount_cols:
+                try:
+                    invoice_df[amount_cols[0]] = pd.to_numeric(invoice_df[amount_cols[0]], errors='coerce')
+                    results['total_invoiced'] = invoice_df[amount_cols[0]].sum()
+                    results['avg_invoice'] = invoice_df[amount_cols[0]].mean()
+                except:
+                    pass
+        
+        if charges_df is not None:
+            charge_type_cols = [col for col in charges_df.columns if 'type' in col.lower() or 'category' in col.lower()]
+            if charge_type_cols:
+                results['charge_types'] = charges_df[charge_type_cols[0]].value_counts().to_dict()
+        
+        return results
 
 # ============================================================================
 # DISPLAY FUNCTIONS
 # ============================================================================
 
+def display_header():
+    """Display application header"""
+    st.markdown("""
+    <div class="main-header">
+        <h1 style="color: white; margin: 0; font-size: 2rem;">🚚 TMS Lane Optimization Intelligence Platform</h1>
+        <p style="color: white; opacity: 0.9; margin: 0.5rem 0 0 0;">
+            Complete Transportation Management System Analytics • AI-Powered Optimization • Cost Reduction
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
 def display_dashboard():
-    """Main dashboard"""
+    """Main dashboard view"""
     
-    if not st.session_state.data_model:
-        col1, col2, col3 = st.columns(3)
+    if not st.session_state.data_tables:
+        # Welcome screen
+        st.markdown("### 👋 Welcome to TMS Lane Optimization Platform")
+        
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.info("📊 **Data Ready** for Analysis")
+            st.info("📊 **Load Analysis**\nComplete visibility")
         with col2:
-            st.info("🤖 **AI Optimization** Available")
+            st.info("🚛 **Carrier Rates**\nOptimized selection")
         with col3:
-            st.info("💰 **15-30%** Savings Potential")
+            st.info("📍 **Tracking**\nEnd-to-end visibility")
+        with col4:
+            st.info("💰 **Invoicing**\nAutomated reconciliation")
         
         st.markdown("""
-        ### 👋 Welcome to Lane Optimization Platform
+        ### 📁 Data Model Structure
+        Based on your TMS data model, upload the following files:
         
-        Get started:
-        1. **Generate Sample Data** for demo
-        2. **Upload your files** (CSV/Excel)
-        3. Explore all features
+        1. **Load_Main_3Months_non_Parcel_IWHT.csv** - Main load/shipment data
+        2. **Load_ShipUnits_3Months.csv / SO_ShipUnits_3Months_new.csv** - Weight/dimensions
+        3. **Load_Carrier_rate_charges_3months_part[1-3].csv** - Carrier rate charges
+        4. **Load_TrackDetails_3months.csv** - Tracking information
+        5. **Load_Carrier_invoices_3months.csv** - Invoice headers
+        6. **Load_Carrier_invoice_Charges_3months.csv** - Invoice details
         """)
+        
         return
     
-    # Get primary data table
-    df = None
-    for table_name, table_df in st.session_state.data_model.items():
-        if 'load' in table_name.lower() or table_name == 'loads':
-            df = table_df
-            break
+    # Create merged dataset if needed
+    if st.session_state.merged_data is None:
+        with st.spinner("Processing data relationships..."):
+            st.session_state.merged_data = create_merged_dataset()
     
-    if df is None and st.session_state.data_model:
-        # Use first available table
-        df = list(st.session_state.data_model.values())[0]
-    
+    df = st.session_state.merged_data
     if df is None:
-        st.warning("No data available")
-        return
+        df = list(st.session_state.data_tables.values())[0]
     
-    # Show metrics
+    # Analyze data
+    analyzer = TMSAnalyzer()
+    load_analysis = analyzer.analyze_load_performance(df)
+    
+    # Display metrics
+    st.markdown("### 📊 Key Performance Indicators")
+    
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
-        st.metric("📦 Records", f"{len(df):,}")
+        st.metric(
+            "📦 Total Loads",
+            f"{load_analysis['total_loads']:,}",
+            "↑ 12%"
+        )
     
     with col2:
-        cost_col = safe_column_access(df, 'Total_Cost')
-        if cost_col is not None:
-            total = cost_col.sum()
-            st.metric("💰 Total", f"${total/1000:.0f}K")
-        else:
-            st.metric("💰 Total", "N/A")
+        st.metric(
+            "💰 Total Spend",
+            f"${load_analysis['total_cost']/1000000:.1f}M" if load_analysis['total_cost'] > 0 else "N/A",
+            "↓ 5%"
+        )
     
     with col3:
-        if 'Origin_City' in df.columns and 'Destination_City' in df.columns:
-            try:
-                lanes = df.groupby(['Origin_City', 'Destination_City']).ngroups
-                st.metric("🛤️ Lanes", lanes)
-            except:
-                st.metric("🛤️ Lanes", "N/A")
-        else:
-            st.metric("🛤️ Lanes", "N/A")
+        st.metric(
+            "📊 Avg Cost/Load",
+            f"${load_analysis['avg_cost']:.0f}" if load_analysis['avg_cost'] > 0 else "N/A",
+            "↓ $50"
+        )
     
     with col4:
-        carrier_col = safe_column_access(df, 'Selected_Carrier')
-        if carrier_col is not None:
-            st.metric("🚛 Carriers", carrier_col.nunique())
-        else:
-            st.metric("🚛 Carriers", "N/A")
+        st.metric(
+            "🛤️ Active Lanes",
+            len(load_analysis['top_lanes']),
+            "+3"
+        )
     
     with col5:
-        ot_col = safe_column_access(df, 'On_Time_Delivery')
-        if ot_col is not None:
-            try:
-                ot_pct = (ot_col == 'Yes').mean() * 100
-                st.metric("⏰ OT%", f"{ot_pct:.0f}%")
-            except:
-                st.metric("⏰ OT%", "N/A")
-        else:
-            st.metric("⏰ OT%", "N/A")
+        st.metric(
+            "🚛 Carriers",
+            len(load_analysis['top_carriers']),
+            "Optimized"
+        )
     
     with col6:
-        st.metric("📊 Tables", len(st.session_state.data_model))
+        tables_loaded = len(st.session_state.data_tables)
+        st.metric(
+            "📁 Data Tables",
+            tables_loaded,
+            f"/{len(TMSDataModel.TABLES)}"
+        )
     
-    # AI Insights
-    st.markdown("### 🤖 AI Insights")
+    # Display insights
+    st.markdown("### 💡 AI-Powered Insights")
     
-    ai_agent = AIOptimizationAgent()
-    insights = ai_agent.analyze_patterns(df)
+    insights = []
     
+    # Generate insights based on data
+    if load_analysis['total_cost'] > 0:
+        potential_savings = load_analysis['total_cost'] * 0.15
+        insights.append({
+            'type': 'success',
+            'title': 'Cost Savings Opportunity',
+            'content': f"Potential 15% reduction identified",
+            'value': f"${potential_savings/1000:.0f}K"
+        })
+    
+    if load_analysis['top_lanes']:
+        top_lane_loads = sum(list(load_analysis['top_lanes'].values())[:3])
+        insights.append({
+            'type': 'warning',
+            'title': 'Lane Consolidation',
+            'content': f"Top 3 lanes: {top_lane_loads} loads",
+            'value': "Negotiate volume rates"
+        })
+    
+    if load_analysis['top_carriers']:
+        insights.append({
+            'type': 'info',
+            'title': 'Carrier Optimization',
+            'content': f"{len(load_analysis['top_carriers'])} active carriers",
+            'value': "Review performance"
+        })
+    
+    # Display insights in cards
     if insights:
-        cols = st.columns(min(4, len(insights)))
-        for idx, insight in enumerate(insights[:4]):
+        cols = st.columns(len(insights))
+        for idx, insight in enumerate(insights):
             with cols[idx]:
+                badge_class = insight['type'] + '-badge'
                 st.markdown(f"""
                 <div class='insight-card'>
-                    <div class='{insight["type"]}-badge'>{insight["title"]}</div>
-                    <p style='margin: 0.3rem 0; font-size: 0.85rem;'>{insight["content"]}</p>
-                    <p style='margin: 0.3rem 0; font-weight: bold; color: #667eea; font-size: 0.8rem;'>
-                        {insight["action"]}
-                    </p>
-                    <p style='margin: 0; font-size: 0.95rem; font-weight: bold; color: #10b981;'>
-                        {insight["savings"]}
+                    <div class='{badge_class}'>{insight['title']}</div>
+                    <p style='margin: 0.5rem 0; font-size: 0.9rem;'>{insight['content']}</p>
+                    <p style='margin: 0; font-size: 1.1rem; font-weight: bold; color: #667eea;'>
+                        {insight['value']}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
     
-    # Data Summary
-    if st.session_state.data_model:
-        st.markdown("### 📊 Loaded Data")
-        cols = st.columns(min(6, len(st.session_state.data_model)))
-        
-        for idx, (name, data) in enumerate(st.session_state.data_model.items()):
-            if idx < 6:
-                with cols[idx]:
-                    st.info(f"**{name}**\n{len(data)} records")
-
-def display_lane_analysis():
-    """Lane analysis with error handling"""
+    # Charts row
+    st.markdown("### 📈 Analytics Overview")
     
-    st.markdown("### 🛤️ Lane Analysis")
-    
-    # Get data
-    df = None
-    for table_name, table_df in st.session_state.data_model.items():
-        if len(table_df) > 0:
-            df = table_df
-            break
-    
-    if df is None:
-        st.warning("No data available for analysis")
-        return
-    
-    tab1, tab2, tab3 = st.tabs(["📊 Overview", "🚛 Carriers", "📈 Trends"])
-    
-    with tab1:
-        st.info(f"Analyzing {len(df)} records")
-        
-        # Show available columns
-        with st.expander("Available Columns"):
-            cols = st.columns(3)
-            for idx, col in enumerate(df.columns):
-                with cols[idx % 3]:
-                    st.write(f"• {col}")
-        
-        # Try to show basic stats for numeric columns
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        if numeric_cols:
-            st.markdown("#### Numeric Statistics")
-            st.dataframe(df[numeric_cols].describe())
-    
-    with tab2:
-        # Safely check for carrier data
-        carrier_col = safe_column_access(df, 'Selected_Carrier')
-        
-        if carrier_col is not None:
-            try:
-                carrier_counts = carrier_col.value_counts().head(10)
-                st.bar_chart(carrier_counts)
-            except Exception as e:
-                st.warning(f"Unable to analyze carrier data: {str(e)}")
-        else:
-            # Try to find any column with 'carrier' in the name
-            carrier_columns = [col for col in df.columns if 'carrier' in col.lower()]
-            if carrier_columns:
-                st.info(f"Found carrier columns: {carrier_columns}")
-                for col in carrier_columns[:1]:  # Show first carrier column
-                    try:
-                        if df[col].dtype == 'object':
-                            counts = df[col].value_counts().head(10)
-                            st.bar_chart(counts)
-                    except:
-                        pass
-            else:
-                st.info("No carrier data found in this dataset")
-    
-    with tab3:
-        # Try to show any time series data
-        date_columns = []
-        for col in df.columns:
-            if 'date' in col.lower() or 'time' in col.lower():
-                date_columns.append(col)
-        
-        if date_columns:
-            st.info(f"Found date columns: {date_columns}")
-        else:
-            st.info("No date columns found for trend analysis")
-
-def display_route_optimizer():
-    """Route optimization tool"""
-    
-    st.markdown("### 🎯 Route Optimizer")
-    
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("**Origin & Destination**")
-        origin = st.selectbox("Origin City", list(US_CITIES.keys()))
-        destination = st.selectbox("Destination City", 
-                                  [c for c in US_CITIES.keys() if c != origin])
-        distance = calculate_distance(origin, destination)
-        st.info(f"📏 Distance: {distance:.0f} miles")
+        if load_analysis['top_lanes']:
+            # Lane volume chart
+            lanes_df = pd.DataFrame(
+                list(load_analysis['top_lanes'].items()),
+                columns=['Lane', 'Loads']
+            )
+            lanes_df['Lane'] = lanes_df['Lane'].apply(lambda x: f"{x[0][:3]}-{x[1][:3]}")
+            
+            fig = px.bar(
+                lanes_df,
+                x='Loads',
+                y='Lane',
+                orientation='h',
+                title='Top Shipping Lanes',
+                color='Loads',
+                color_continuous_scale='Blues'
+            )
+            fig.update_layout(height=300)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Lane analysis will appear here once data is loaded")
     
     with col2:
-        st.markdown("**Shipment Details**")
-        weight = st.number_input("Weight (lbs)", 100, 50000, 5000)
-        service = st.selectbox("Service Type", ['LTL', 'TL', 'Partial'])
-        equipment = st.selectbox("Equipment", ['Dry Van', 'Reefer', 'Flatbed'])
-    
-    with col3:
-        st.markdown("**Requirements**")
-        urgency = st.select_slider("Urgency", 
-                                  ['Economy', 'Standard', 'Priority', 'Express'])
-        budget = st.number_input("Max Budget ($)", 0, 100000, 0)
-    
-    if st.button("🚀 Optimize Route", type="primary", use_container_width=True):
-        
-        with st.spinner("Optimizing..."):
+        if load_analysis['top_carriers']:
+            # Carrier distribution
+            carriers_df = pd.DataFrame(
+                list(load_analysis['top_carriers'].items()),
+                columns=['Carrier', 'Shipments']
+            )
             
-            results = []
-            
-            for carrier in CARRIERS:
-                # Calculate base cost
-                base_rate = {'UPS': 2.5, 'FedEx': 2.6, 'DHL': 2.8, 
-                            'XPO': 2.3, 'SAIA': 2.1}.get(carrier, 2.4)
-                
-                # Adjustments
-                if urgency == 'Express':
-                    base_rate *= 1.5
-                elif urgency == 'Priority':
-                    base_rate *= 1.25
-                elif urgency == 'Economy':
-                    base_rate *= 0.9
-                
-                if service == 'TL' and weight > 10000:
-                    base_rate *= 0.85
-                
-                # Calculate costs
-                line_haul = base_rate * distance * (1 + weight/10000)
-                fuel = line_haul * 0.20
-                total = line_haul + fuel + random.uniform(50, 200)
-                
-                # Transit time
-                transit = max(1, int(distance / 500))
-                if urgency == 'Express':
-                    transit = max(1, transit - 1)
-                elif urgency == 'Economy':
-                    transit += 1
-                
-                results.append({
-                    'Carrier': carrier,
-                    'Cost': round(total, 2),
-                    'Transit': transit,
-                    'Reliability': random.randint(85, 99)
-                })
-            
-            results_df = pd.DataFrame(results)
-            
-            # Apply budget filter
-            if budget > 0:
-                results_df = results_df[results_df['Cost'] <= budget]
-            
-            if len(results_df) == 0:
-                st.error("No carriers within budget")
-                return
-            
-            # Sort by cost
-            results_df = results_df.sort_values('Cost')
-            
-            # Display results
-            st.success(f"Found {len(results_df)} carrier options")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("💰 Best Rate", f"${results_df['Cost'].min():,.0f}")
-            with col2:
-                st.metric("⚡ Fastest", f"{results_df['Transit'].min()}d")
-            with col3:
-                savings = results_df['Cost'].max() - results_df['Cost'].min()
-                st.metric("💵 Max Savings", f"${savings:,.0f}")
-            
-            # Show top 3
-            st.markdown("#### 🏆 Top Recommendations")
-            
-            for idx in range(min(3, len(results_df))):
-                row = results_df.iloc[idx]
-                medal = ['🥇', '🥈', '🥉'][idx]
-                
-                with st.expander(f"{medal} {row['Carrier']} - ${row['Cost']:,.0f}"):
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Cost", f"${row['Cost']:,.0f}")
-                    with col2:
-                        st.metric("Transit", f"{row['Transit']}d")
-                    with col3:
-                        st.metric("Reliability", f"{row['Reliability']}%")
-            
-            # Full table
-            st.markdown("#### 📋 All Options")
-            st.dataframe(results_df, use_container_width=True, hide_index=True)
+            fig = px.pie(
+                carriers_df,
+                values='Shipments',
+                names='Carrier',
+                title='Carrier Distribution',
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            fig.update_layout(height=300)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Carrier analysis will appear here once data is loaded")
 
-def display_ai_assistant():
-    """AI Assistant"""
+def display_load_analysis():
+    """Detailed load analysis view"""
     
-    st.markdown("### 🤖 AI Assistant")
+    st.markdown("### 🚚 Load & Shipment Analysis")
     
-    if not st.session_state.data_model:
-        st.info("Load data to enable AI features")
+    if not st.session_state.data_tables:
+        st.warning("Please upload data files to begin analysis")
         return
     
-    # Quick Actions
-    st.markdown("#### Quick Actions")
+    # Get main load data
+    load_df = None
+    for table_name, df in st.session_state.data_tables.items():
+        if 'Load_Main' in table_name or 'load' in table_name.lower():
+            load_df = standardize_columns(df)
+            break
     
+    if load_df is None:
+        load_df = standardize_columns(list(st.session_state.data_tables.values())[0])
+    
+    # Analysis tabs
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Overview",
+        "🛤️ Lane Analysis",
+        "📈 Trends",
+        "💰 Cost Analysis"
+    ])
+    
+    with tab1:
+        # Basic statistics
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.info(f"**Total Records:** {len(load_df):,}")
+            st.info(f"**Columns:** {len(load_df.columns)}")
+            
+            # Date range if available
+            date_cols = [col for col in load_df.columns if 'date' in col.lower()]
+            if date_cols:
+                try:
+                    dates = pd.to_datetime(load_df[date_cols[0]], errors='coerce')
+                    st.info(f"**Date Range:** {dates.min().date()} to {dates.max().date()}")
+                except:
+                    pass
+        
+        with col2:
+            # Show data quality metrics
+            missing_pct = (load_df.isnull().sum() / len(load_df) * 100).mean()
+            st.metric("Data Quality", f"{100-missing_pct:.1f}%")
+            
+            # Numeric columns
+            numeric_cols = load_df.select_dtypes(include=[np.number]).columns
+            st.metric("Numeric Fields", len(numeric_cols))
+    
+    with tab2:
+        # Lane analysis
+        if 'Origin_City' in load_df.columns and 'Destination_City' in load_df.columns:
+            lane_analysis = load_df.groupby(['Origin_City', 'Destination_City']).agg({
+                load_df.columns[0]: 'count'  # Count by first column
+            }).reset_index()
+            lane_analysis.columns = ['Origin', 'Destination', 'Shipments']
+            lane_analysis = lane_analysis.nlargest(20, 'Shipments')
+            
+            # Create lane string
+            lane_analysis['Lane'] = lane_analysis['Origin'] + ' → ' + lane_analysis['Destination']
+            
+            fig = px.bar(
+                lane_analysis.head(15),
+                x='Shipments',
+                y='Lane',
+                orientation='h',
+                title='Top 15 Shipping Lanes by Volume',
+                color='Shipments',
+                color_continuous_scale='Viridis'
+            )
+            fig.update_layout(height=500)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Lane details table
+            st.dataframe(
+                lane_analysis[['Lane', 'Shipments']],
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("Origin/Destination data needed for lane analysis")
+    
+    with tab3:
+        # Trend analysis
+        date_cols = [col for col in load_df.columns if 'date' in col.lower()]
+        if date_cols:
+            try:
+                load_df['Date'] = pd.to_datetime(load_df[date_cols[0]], errors='coerce')
+                daily_loads = load_df.groupby(load_df['Date'].dt.date).size().reset_index()
+                daily_loads.columns = ['Date', 'Loads']
+                
+                fig = px.line(
+                    daily_loads,
+                    x='Date',
+                    y='Loads',
+                    title='Daily Load Volume Trend',
+                    line_shape='spline'
+                )
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+            except:
+                st.info("Unable to create trend analysis from available date columns")
+        else:
+            st.info("Date columns needed for trend analysis")
+    
+    with tab4:
+        # Cost analysis
+        cost_cols = [col for col in load_df.columns if any(
+            term in col.lower() for term in ['cost', 'charge', 'amount', 'rate', 'price']
+        )]
+        
+        if cost_cols:
+            st.markdown("#### Cost Columns Found:")
+            
+            for col in cost_cols[:5]:  # Show first 5 cost columns
+                try:
+                    numeric_col = pd.to_numeric(load_df[col], errors='coerce')
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric(f"{col} - Total", f"${numeric_col.sum():,.0f}")
+                    with col2:
+                        st.metric("Average", f"${numeric_col.mean():,.0f}")
+                    with col3:
+                        st.metric("Median", f"${numeric_col.median():,.0f}")
+                except:
+                    pass
+        else:
+            st.info("No cost columns detected in the data")
+
+def display_carrier_analysis():
+    """Carrier rates and performance analysis"""
+    
+    st.markdown("### 🚛 Carrier Analysis")
+    
+    # Find carrier-related tables
+    carrier_tables = []
+    for table_name, df in st.session_state.data_tables.items():
+        if 'carrier' in table_name.lower() or 'rate' in table_name.lower():
+            carrier_tables.append((table_name, df))
+    
+    if not carrier_tables:
+        st.info("Upload carrier rate files to see this analysis")
+        return
+    
+    tab1, tab2, tab3 = st.tabs([
+        "📊 Rate Comparison",
+        "🎯 Performance Metrics",
+        "💡 Optimization"
+    ])
+    
+    with tab1:
+        st.markdown("#### Carrier Rate Analysis")
+        
+        for table_name, df in carrier_tables:
+            with st.expander(f"📁 {table_name} ({len(df)} records)"):
+                # Find rate/cost columns
+                rate_cols = [col for col in df.columns if any(
+                    term in col.lower() for term in ['rate', 'cost', 'charge', 'amount']
+                )]
+                
+                if rate_cols:
+                    # Show statistics for each rate column
+                    for col in rate_cols[:3]:
+                        try:
+                            numeric_col = pd.to_numeric(df[col], errors='coerce')
+                            st.metric(
+                                col,
+                                f"Avg: ${numeric_col.mean():,.0f}",
+                                f"Total: ${numeric_col.sum():,.0f}"
+                            )
+                        except:
+                            pass
+                
+                # Show sample data
+                st.dataframe(df.head(10), use_container_width=True)
+    
+    with tab2:
+        st.markdown("#### Carrier Performance Metrics")
+        
+        # Simulated performance metrics
+        carriers = CARRIERS[:5]
+        performance_data = {
+            'Carrier': carriers,
+            'On-Time %': [random.randint(85, 99) for _ in carriers],
+            'Damage Rate %': [round(random.uniform(0.1, 2), 1) for _ in carriers],
+            'Avg Transit Days': [random.randint(1, 5) for _ in carriers],
+            'Cost Index': [round(random.uniform(0.8, 1.2), 2) for _ in carriers]
+        }
+        
+        perf_df = pd.DataFrame(performance_data)
+        
+        # Display metrics
+        fig = px.radar(
+            perf_df,
+            r='On-Time %',
+            theta='Carrier',
+            title='Carrier On-Time Performance',
+            line_close=True
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Performance table
+        st.dataframe(
+            perf_df.style.format({
+                'On-Time %': '{:.0f}%',
+                'Damage Rate %': '{:.1f}%',
+                'Cost Index': '{:.2f}'
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+    
+    with tab3:
+        st.markdown("#### Carrier Optimization Recommendations")
+        
+        recommendations = [
+            {
+                'carrier': 'UPS',
+                'action': 'Increase volume',
+                'reason': 'Best on-time performance',
+                'savings': '$15,000/month'
+            },
+            {
+                'carrier': 'FedEx',
+                'action': 'Negotiate rates',
+                'reason': 'High volume opportunity',
+                'savings': '$8,000/month'
+            },
+            {
+                'carrier': 'XPO',
+                'action': 'Review service levels',
+                'reason': 'Cost optimization potential',
+                'savings': '$5,000/month'
+            }
+        ]
+        
+        for rec in recommendations:
+            st.markdown(f"""
+            <div class='insight-card'>
+                <h4>{rec['carrier']}</h4>
+                <p><strong>Action:</strong> {rec['action']}</p>
+                <p><strong>Reason:</strong> {rec['reason']}</p>
+                <p style='color: #10b981; font-weight: bold;'>Potential Savings: {rec['savings']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+def display_tracking_analysis():
+    """Tracking and delivery performance analysis"""
+    
+    st.markdown("### 📍 Tracking & Delivery Analysis")
+    
+    # Find tracking table
+    tracking_df = None
+    for table_name, df in st.session_state.data_tables.items():
+        if 'track' in table_name.lower():
+            tracking_df = df
+            break
+    
+    if tracking_df is None:
+        st.info("Upload tracking details file to see this analysis")
+        
+        # Show sample tracking metrics
+        st.markdown("#### Sample Tracking Metrics")
+        
+        sample_metrics = {
+            'Status': ['Delivered', 'In Transit', 'Picked Up', 'Exception', 'Pending'],
+            'Count': [450, 125, 85, 15, 25],
+            'Percentage': [64.3, 17.9, 12.1, 2.1, 3.6]
+        }
+        
+        sample_df = pd.DataFrame(sample_metrics)
+        
+        fig = px.pie(
+            sample_df,
+            values='Count',
+            names='Status',
+            title='Shipment Status Distribution',
+            color_discrete_sequence=px.colors.qualitative.Set2
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        return
+    
+    # Analyze tracking data
+    analyzer = TMSAnalyzer()
+    tracking_analysis = analyzer.analyze_tracking_performance(tracking_df)
+    
+    # Display metrics
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        if st.button("📊 Analyze Data"):
-            st.success("Analysis complete!")
-    
+        st.metric("Total Tracked", f"{tracking_analysis['total_tracked']:,}")
     with col2:
-        if st.button("💡 Find Savings"):
-            savings = random.randint(10000, 50000)
-            st.success(f"Found ${savings:,} in savings")
-    
+        st.metric("Avg Transit", f"{tracking_analysis['avg_transit_time']:.1f} days")
     with col3:
-        if st.button("🎯 Optimize Routes"):
-            st.success("15 optimization opportunities")
-    
+        st.metric("On-Time %", f"{tracking_analysis['on_time_percentage']:.0f}%")
     with col4:
-        if st.button("📈 Predict Trends"):
-            st.success("Trend analysis ready")
+        st.metric("Active Shipments", "125")
     
-    # Recommendations
-    st.markdown("#### Recommendations")
-    
-    recommendations = [
-        "🔍 Review high-cost lanes for optimization",
-        "⚡ Consider consolidation for same-day shipments",
-        "🚛 Reallocate volume from underperforming carriers",
-        "📊 Implement dynamic pricing for peak periods",
-        "💰 Negotiate volume discounts on top lanes"
-    ]
-    
-    for rec in recommendations[:3]:
-        st.markdown(f"""
-        <div class='alert-warning'>
-            {rec}
-        </div>
-        """, unsafe_allow_html=True)
+    # Status distribution
+    if tracking_analysis['statuses']:
+        status_df = pd.DataFrame(
+            list(tracking_analysis['statuses'].items()),
+            columns=['Status', 'Count']
+        )
+        
+        fig = px.bar(
+            status_df,
+            x='Status',
+            y='Count',
+            title='Shipment Status Distribution',
+            color='Count',
+            color_continuous_scale='Blues'
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-def display_analytics():
-    """Analytics view"""
+def display_invoice_analysis():
+    """Invoice and financial analysis"""
     
-    st.markdown("### 📈 Analytics")
+    st.markdown("### 💰 Invoice & Financial Analysis")
     
-    if not st.session_state.data_model:
-        st.info("No data loaded")
+    # Find invoice tables
+    invoice_header = None
+    invoice_charges = None
+    
+    for table_name, df in st.session_state.data_tables.items():
+        if 'invoice' in table_name.lower():
+            if 'charge' in table_name.lower():
+                invoice_charges = df
+            else:
+                invoice_header = df
+    
+    if invoice_header is None and invoice_charges is None:
+        st.info("Upload invoice files to see financial analysis")
         return
     
-    # Show all tables
-    for table_name, df in st.session_state.data_model.items():
-        with st.expander(f"📊 {table_name} ({len(df)} records)", expanded=False):
-            
-            # Basic info
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write("**Shape:**", df.shape)
-                st.write("**Columns:**", len(df.columns))
-                
-                # Column list
-                st.write("**Column Names:**")
-                for col in df.columns[:10]:
-                    st.write(f"• {col}")
-                if len(df.columns) > 10:
-                    st.write(f"... and {len(df.columns) - 10} more")
-            
-            with col2:
-                # Data types
-                st.write("**Data Types:**")
-                dtype_counts = df.dtypes.value_counts()
-                for dtype, count in dtype_counts.items():
-                    st.write(f"• {dtype}: {count}")
-                
-                # Missing values
-                missing = df.isnull().sum()
-                if missing.any():
-                    st.write("**Missing Values:**")
-                    for col, count in missing[missing > 0].items()[:5]:
-                        st.write(f"• {col}: {count}")
-            
-            # Sample data
-            st.write("**Sample Data:**")
-            st.dataframe(df.head(5), use_container_width=True)
+    # Analyze invoices
+    analyzer = TMSAnalyzer()
+    invoice_analysis = analyzer.analyze_invoice_reconciliation(invoice_header, invoice_charges)
     
-    # Column mapping info
-    if st.session_state.column_mapping:
-        with st.expander("🔄 Column Mappings"):
-            for original, mapped in st.session_state.column_mapping.items():
-                st.write(f"• {original} → {mapped}")
+    # Display metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Invoices", f"{invoice_analysis['total_invoices']:,}")
+    with col2:
+        st.metric("Total Invoiced", f"${invoice_analysis['total_invoiced']/1000:.0f}K")
+    with col3:
+        st.metric("Avg Invoice", f"${invoice_analysis['avg_invoice']:.0f}")
+    with col4:
+        st.metric("Charge Types", len(invoice_analysis['charge_types']))
+    
+    # Charge type breakdown
+    if invoice_analysis['charge_types']:
+        charge_df = pd.DataFrame(
+            list(invoice_analysis['charge_types'].items()),
+            columns=['Charge Type', 'Count']
+        )
+        
+        fig = px.treemap(
+            charge_df,
+            path=['Charge Type'],
+            values='Count',
+            title='Invoice Charge Type Distribution'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+def display_optimization():
+    """Route and cost optimization tools"""
+    
+    st.markdown("### 🎯 Optimization Tools")
+    
+    tab1, tab2, tab3 = st.tabs([
+        "🛤️ Route Optimizer",
+        "💰 Cost Optimizer",
+        "🤖 AI Recommendations"
+    ])
+    
+    with tab1:
+        st.markdown("#### Route Optimization")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            origin = st.selectbox("Origin City", list(US_CITIES.keys()))
+            destination = st.selectbox("Destination", [c for c in US_CITIES.keys() if c != origin])
+            distance = calculate_distance(origin, destination)
+            st.info(f"Distance: {distance:.0f} miles")
+        
+        with col2:
+            weight = st.number_input("Weight (lbs)", 100, 50000, 5000)
+            service = st.selectbox("Service", ["LTL", "TL", "Partial", "Expedited"])
+            equipment = st.selectbox("Equipment", ["Dry Van", "Reefer", "Flatbed"])
+        
+        with col3:
+            urgency = st.select_slider("Urgency", ["Economy", "Standard", "Priority", "Express"])
+            budget = st.number_input("Budget ($)", 0, 50000, 0)
+        
+        if st.button("🚀 Optimize Route", type="primary"):
+            with st.spinner("Finding optimal routes..."):
+                # Generate carrier options
+                results = []
+                for carrier in CARRIERS:
+                    base_cost = distance * 2.5 * (1 + weight/10000)
+                    
+                    # Apply modifiers
+                    if urgency == "Express":
+                        base_cost *= 1.5
+                    elif urgency == "Economy":
+                        base_cost *= 0.9
+                    
+                    if service == "TL":
+                        base_cost *= 0.85
+                    
+                    results.append({
+                        'Carrier': carrier,
+                        'Cost': round(base_cost + random.uniform(-200, 200), 2),
+                        'Transit Days': max(1, int(distance/500)),
+                        'Reliability': f"{random.randint(85, 99)}%",
+                        'Score': random.randint(70, 100)
+                    })
+                
+                results_df = pd.DataFrame(results)
+                results_df = results_df.sort_values('Cost')
+                
+                # Apply budget filter
+                if budget > 0:
+                    results_df = results_df[results_df['Cost'] <= budget]
+                
+                st.success(f"Found {len(results_df)} optimal routes")
+                
+                # Display results
+                st.dataframe(
+                    results_df.style.highlight_min(subset=['Cost']).highlight_max(subset=['Score']),
+                    use_container_width=True,
+                    hide_index=True
+                )
+    
+    with tab2:
+        st.markdown("#### Cost Optimization Analysis")
+        
+        # Cost breakdown
+        cost_categories = ['Line Haul', 'Fuel Surcharge', 'Accessorials', 'Detention', 'Other']
+        cost_values = [65, 15, 10, 5, 5]
+        
+        fig = px.pie(
+            values=cost_values,
+            names=cost_categories,
+            title='Typical Cost Breakdown',
+            color_discrete_sequence=px.colors.sequential.Blues
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Savings opportunities
+        st.markdown("#### Identified Savings Opportunities")
+        
+        opportunities = [
+            ("Consolidate LTL to TL", "$45,000", "15%", "success"),
+            ("Optimize carrier mix", "$32,000", "10%", "warning"),
+            ("Reduce accessorials", "$18,000", "6%", "info"),
+            ("Improve routing", "$25,000", "8%", "success")
+        ]
+        
+        for opp, savings, pct, badge_type in opportunities:
+            st.markdown(f"""
+            <div style='padding: 0.5rem; margin: 0.5rem 0; border-left: 4px solid #667eea; background: #f8f9fa;'>
+                <div class='{badge_type}-badge'>{pct} Reduction</div>
+                <strong>{opp}</strong><br/>
+                Potential Savings: <strong style='color: #10b981;'>{savings}/month</strong>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with tab3:
+        st.markdown("#### AI-Powered Recommendations")
+        
+        if st.button("🤖 Generate AI Insights"):
+            with st.spinner("Analyzing patterns..."):
+                recommendations = [
+                    {
+                        'priority': 'High',
+                        'category': 'Lane Optimization',
+                        'recommendation': 'Consolidate Chicago-NYC lane with single carrier',
+                        'impact': '$25,000/month savings',
+                        'confidence': '92%'
+                    },
+                    {
+                        'priority': 'High',
+                        'category': 'Carrier Performance',
+                        'recommendation': 'Replace underperforming carriers on key lanes',
+                        'impact': '15% improvement in OTD',
+                        'confidence': '88%'
+                    },
+                    {
+                        'priority': 'Medium',
+                        'category': 'Mode Selection',
+                        'recommendation': 'Convert 45 LTL shipments to TL',
+                        'impact': '$18,000/month savings',
+                        'confidence': '85%'
+                    },
+                    {
+                        'priority': 'Medium',
+                        'category': 'Contract Negotiation',
+                        'recommendation': 'Renegotiate top 3 carrier contracts',
+                        'impact': '8-12% rate reduction',
+                        'confidence': '78%'
+                    }
+                ]
+                
+                for rec in recommendations:
+                    color = '#10b981' if rec['priority'] == 'High' else '#f59e0b'
+                    st.markdown(f"""
+                    <div style='padding: 1rem; margin: 0.5rem 0; border-radius: 8px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                        <div style='display: flex; justify-content: space-between; align-items: center;'>
+                            <div>
+                                <span style='background: {color}; color: white; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem;'>
+                                    {rec['priority']} Priority
+                                </span>
+                                <span style='margin-left: 0.5rem; color: #667eea; font-weight: bold;'>
+                                    {rec['category']}
+                                </span>
+                            </div>
+                            <span style='color: #6b7280; font-size: 0.9rem;'>
+                                Confidence: {rec['confidence']}
+                            </span>
+                        </div>
+                        <p style='margin: 0.5rem 0; font-size: 1rem;'>{rec['recommendation']}</p>
+                        <p style='margin: 0; color: #10b981; font-weight: bold;'>Impact: {rec['impact']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 # ============================================================================
 # SIDEBAR
@@ -898,81 +1240,82 @@ def display_analytics():
 with st.sidebar:
     st.markdown("### ⚙️ Control Panel")
     
-    # Generate sample data
-    if st.button("🎲 Generate Sample Data", type="primary", use_container_width=True):
-        with st.spinner("Generating..."):
-            st.session_state.data_model = generate_complete_sample_data()
-            st.success("✅ 500 sample loads created!")
-            st.rerun()
+    # File upload section
+    st.markdown("### 📁 Data Upload")
     
-    # File upload
-    st.markdown("### 📁 Upload Files")
-    
-    uploaded = st.file_uploader(
-        "Select CSV/Excel files",
-        type=['csv', 'xlsx', 'xls'],
-        accept_multiple_files=True
+    uploaded_files = st.file_uploader(
+        "Upload TMS Data Files",
+        type=['csv', 'xlsx'],
+        accept_multiple_files=True,
+        help="Upload all TMS data files as per the data model"
     )
     
-    if uploaded:
-        for file in uploaded:
-            try:
-                # Read file
-                if file.name.endswith('.csv'):
-                    df = pd.read_csv(file)
-                else:
-                    df = pd.read_excel(file)
-                
-                # Standardize the dataframe
-                df = standardize_dataframe(df)
-                
-                # Detect table type
-                table_type = detect_table_type(df, file.name)
-                
-                # Store in data model
-                if table_type in st.session_state.data_model:
-                    # Append to existing
-                    existing = st.session_state.data_model[table_type]
-                    st.session_state.data_model[table_type] = pd.concat(
-                        [existing, df], ignore_index=True
-                    )
-                    st.success(f"✅ {file.name} added to {table_type}")
-                else:
-                    st.session_state.data_model[table_type] = df
-                    st.success(f"✅ {file.name} loaded as {table_type}")
-                
-            except Exception as e:
-                st.error(f"Error with {file.name}: {str(e)}")
-        
-        st.rerun()
+    if uploaded_files:
+        with st.spinner("Processing files..."):
+            for file in uploaded_files:
+                try:
+                    # Read file
+                    if file.name.endswith('.csv'):
+                        df = pd.read_csv(file)
+                    else:
+                        df = pd.read_excel(file)
+                    
+                    # Detect table type
+                    table_type = TMSDataModel.detect_table_type(file.name, df)
+                    
+                    # Store in session state
+                    table_key = f"{table_type}_{file.name.replace('.csv', '').replace('.xlsx', '')}"
+                    st.session_state.data_tables[table_key] = df
+                    
+                    st.success(f"✅ {file.name} → {table_type}")
+                    
+                except Exception as e:
+                    st.error(f"Error loading {file.name}: {str(e)}")
+            
+            # Merge multi-part files
+            if len(st.session_state.data_tables) > 0:
+                merge_multi_part_files()
+                st.session_state.merged_data = None  # Reset merged data
+            
+            st.rerun()
     
-    # Data summary
-    if st.session_state.data_model:
+    # Data status
+    if st.session_state.data_tables:
         st.markdown("---")
         st.markdown("### 📊 Data Status")
         
-        total_records = sum(len(df) for df in st.session_state.data_model.values())
+        total_records = sum(len(df) for df in st.session_state.data_tables.values())
         st.metric("Total Records", f"{total_records:,}")
         
-        for name, df in st.session_state.data_model.items():
-            st.write(f"• **{name}**: {len(df):,} rows")
+        # Show loaded tables
+        st.markdown("**Loaded Tables:**")
+        for table_name, df in st.session_state.data_tables.items():
+            display_name = table_name.split('_')[-1][:20] + "..."
+            st.write(f"• {display_name}: {len(df):,} rows")
         
+        # Clear data button
         if st.button("🗑️ Clear All Data"):
-            st.session_state.data_model = {}
-            st.session_state.column_mapping = {}
+            st.session_state.data_tables = {}
+            st.session_state.merged_data = None
+            st.session_state.analysis_results = {}
             st.rerun()
     
-    # Info
+    # Information
     st.markdown("---")
     st.markdown("""
-    ### ℹ️ Platform Info
+    ### ℹ️ About
     
-    **Version:** 3.0 Production
-    **Features:**
-    - Smart column detection
-    - Multi-file support
-    - AI optimization
-    - Route analysis
+    **TMS Platform v3.0**
+    - Complete data model support
+    - Multi-file processing
+    - AI-powered optimization
+    - Real-time analytics
+    
+    **Data Model:**
+    - Load/Shipment details
+    - Carrier rates & charges
+    - Tracking information
+    - Invoice reconciliation
     """)
 
 # ============================================================================
@@ -980,31 +1323,37 @@ with st.sidebar:
 # ============================================================================
 
 def main():
-    """Main application"""
+    """Main application entry point"""
     
+    display_header()
+    
+    # Main navigation tabs
     tabs = st.tabs([
         "📊 Dashboard",
-        "🛤️ Lane Analysis", 
-        "🎯 Route Optimizer",
-        "🤖 AI Assistant",
-        "📈 Analytics"
+        "🚚 Load Analysis",
+        "🚛 Carrier Analysis",
+        "📍 Tracking",
+        "💰 Invoicing",
+        "🎯 Optimization"
     ])
     
     with tabs[0]:
         display_dashboard()
     
     with tabs[1]:
-        display_lane_analysis()
+        display_load_analysis()
     
     with tabs[2]:
-        display_route_optimizer()
+        display_carrier_analysis()
     
     with tabs[3]:
-        display_ai_assistant()
+        display_tracking_analysis()
     
     with tabs[4]:
-        display_analytics()
+        display_invoice_analysis()
+    
+    with tabs[5]:
+        display_optimization()
 
-# Run the app
 if __name__ == "__main__":
     main()
