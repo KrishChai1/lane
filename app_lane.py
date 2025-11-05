@@ -971,105 +971,152 @@ def display_lane_analysis():
     with tab2:
         st.markdown("#### Financial Analysis")
         
-        # Find all financial columns
-        financial_cols = [col for col in df.columns if any(
-            term in col.lower() for term in ['charge', 'rate', 'cost', 'amount', 'sum', 'price']
-        )]
+        # Identify truly numeric financial columns (not text columns like Type or Description)
+        potential_financial_cols = []
         
-        if financial_cols:
-            # Process each financial column
-            valid_financials = {}
-            for col in financial_cols[:5]:  # Process top 5
+        for col in df.columns:
+            # Skip obvious text/category columns
+            if any(skip in col.lower() for skip in ['type', 'description', 'name', 'id', 'number', 'date', 'created', 'updated', 'attribute']):
+                continue
+                
+            # Check if column name suggests financial data
+            if any(term in col.lower() for term in ['charge', 'rate', 'cost', 'amount', 'sum', 'price', 'fee', 'total']):
+                # Verify it's actually numeric
+                try:
+                    test_numeric = pd.to_numeric(df[col].dropna().head(100), errors='coerce')
+                    if test_numeric.notna().sum() > len(test_numeric) * 0.5:  # At least 50% numeric
+                        potential_financial_cols.append(col)
+                except:
+                    pass
+        
+        if potential_financial_cols:
+            st.write(f"Found {len(potential_financial_cols)} financial columns for analysis")
+            
+            # Process valid financial columns
+            financial_summary = []
+            total_all_charges = 0
+            
+            for col in potential_financial_cols:
                 try:
                     numeric_col = pd.to_numeric(df[col], errors='coerce')
-                    # Only keep positive, non-zero values
-                    valid_values = numeric_col[(numeric_col > 0) & (numeric_col < 1e9)]
+                    # Filter for reasonable values (positive, not astronomical)
+                    valid_values = numeric_col[(numeric_col > 0) & (numeric_col < 1e8)]
+                    
                     if len(valid_values) > 0:
-                        valid_financials[col] = {
-                            'total': valid_values.sum(),
-                            'mean': valid_values.mean(),
-                            'median': valid_values.median(),
-                            'std': valid_values.std(),
-                            'count': len(valid_values),
-                            'data': valid_values
+                        col_stats = {
+                            'Column': col,
+                            'Total': valid_values.sum(),
+                            'Average': valid_values.mean(),
+                            'Median': valid_values.median(),
+                            'Count': len(valid_values),
+                            'Min': valid_values.min(),
+                            'Max': valid_values.max()
                         }
+                        financial_summary.append(col_stats)
+                        total_all_charges += col_stats['Total']
                 except:
                     pass
             
-            if valid_financials:
-                # Summary metrics
-                total_financial = sum(v['total'] for v in valid_financials.values())
+            if financial_summary:
+                # Overall metrics
+                col1, col2, col3, col4 = st.columns(4)
                 
-                col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.metric("💰 Total Financial Volume", f"${total_financial:,.0f}")
+                    st.metric("💰 Total Charges", f"${total_all_charges:,.2f}")
                 with col2:
-                    avg_transaction = total_financial / len(df) if len(df) > 0 else 0
-                    st.metric("📊 Avg per Transaction", f"${avg_transaction:,.2f}")
+                    avg_per_record = total_all_charges / len(df) if len(df) > 0 else 0
+                    st.metric("📊 Avg per Record", f"${avg_per_record:,.2f}")
                 with col3:
-                    total_transactions = sum(v['count'] for v in valid_financials.values())
-                    st.metric("🔢 Valid Transactions", f"{total_transactions:,}")
+                    total_valid = sum(stat['Count'] for stat in financial_summary)
+                    st.metric("✅ Valid Values", f"{total_valid:,}")
+                with col4:
+                    data_coverage = (total_valid / (len(df) * len(potential_financial_cols))) * 100
+                    st.metric("📈 Data Coverage", f"{data_coverage:.0f}%")
                 
                 st.markdown("---")
                 
-                # Financial breakdown chart
-                if len(valid_financials) > 1:
-                    breakdown_data = pd.DataFrame({
-                        'Category': list(valid_financials.keys()),
-                        'Total': [v['total'] for v in valid_financials.values()],
-                        'Average': [v['mean'] for v in valid_financials.values()]
-                    })
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        fig = px.bar(
-                            breakdown_data,
-                            x='Category',
-                            y='Total',
-                            title='Financial Breakdown by Category',
-                            color='Total',
-                            color_continuous_scale='Greens'
-                        )
-                        fig.update_layout(height=350, showlegend=False)
-                        st.plotly_chart(fig, key="fin_breakdown")
-                    
-                    with col2:
-                        # Distribution of largest financial column
-                        largest_col = max(valid_financials.items(), key=lambda x: x[1]['total'])
-                        col_name, col_data = largest_col
-                        
-                        # Create bins for histogram
-                        sample_data = col_data['data'].sample(min(1000, len(col_data['data'])))
-                        
-                        fig = px.histogram(
-                            sample_data,
-                            nbins=30,
-                            title=f'Distribution: {col_name}',
-                            labels={'value': 'Amount ($)', 'count': 'Frequency'}
-                        )
-                        fig.update_layout(height=350, showlegend=False)
-                        st.plotly_chart(fig, key="fin_dist")
+                # Show top financial columns
+                st.markdown("##### Top Financial Categories")
                 
-                # Statistical insights
-                st.markdown("##### Financial Insights")
+                # Sort by total value
+                financial_summary.sort(key=lambda x: x['Total'], reverse=True)
                 
-                for col_name, stats in list(valid_financials.items())[:3]:
-                    with st.expander(f"📊 {col_name} Analysis"):
+                # Display top 3 in detail
+                for i, stats in enumerate(financial_summary[:3]):
+                    with st.expander(f"💵 {stats['Column']} - ${stats['Total']:,.2f} Total", expanded=(i==0)):
                         col1, col2, col3, col4 = st.columns(4)
+                        
                         with col1:
-                            st.metric("Total", f"${stats['total']:,.0f}")
+                            st.metric("Total", f"${stats['Total']:,.2f}")
                         with col2:
-                            st.metric("Average", f"${stats['mean']:,.0f}")
+                            st.metric("Average", f"${stats['Average']:,.2f}")
                         with col3:
-                            st.metric("Median", f"${stats['median']:,.0f}")
+                            st.metric("Median", f"${stats['Median']:,.2f}")
                         with col4:
-                            cv = (stats['std'] / stats['mean'] * 100) if stats['mean'] > 0 else 0
-                            st.metric("Variability", f"{cv:.0f}%")
+                            st.metric("Transactions", f"{stats['Count']:,}")
+                        
+                        # Show distribution
+                        if stats['Count'] > 10:
+                            sample_size = min(1000, stats['Count'])
+                            sample_data = pd.to_numeric(df[stats['Column']], errors='coerce').dropna().sample(min(sample_size, len(df)))
+                            
+                            fig = px.box(
+                                y=sample_data,
+                                title=f"Value Distribution for {stats['Column']}",
+                                labels={'y': 'Amount ($)'}
+                            )
+                            fig.update_layout(height=250, showlegend=False)
+                            st.plotly_chart(fig, key=f"fin_box_{stats['Column']}")
+                
+                # Summary chart of all financial columns
+                if len(financial_summary) > 1:
+                    summary_df = pd.DataFrame(financial_summary)
+                    
+                    fig = px.bar(
+                        summary_df.head(10),
+                        x='Column',
+                        y='Total',
+                        title='Financial Volume by Category',
+                        text='Total',
+                        color='Total',
+                        color_continuous_scale='Greens'
+                    )
+                    fig.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
+                    fig.update_layout(height=400, showlegend=False)
+                    st.plotly_chart(fig, key="fin_summary_bar")
             else:
-                st.info("No valid financial data found in the uploaded file")
+                st.warning("No valid numeric financial data found in the columns")
+                st.info("💡 Financial columns should contain numeric values. Text descriptions and categories are analyzed in other tabs.")
         else:
-            st.info("No financial columns detected in the data")
+            # Check if there are any numeric columns at all
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0:
+                st.info(f"Found {len(numeric_cols)} numeric columns. Analyzing...")
+                
+                # Analyze any numeric columns
+                for col in numeric_cols[:5]:
+                    try:
+                        if df[col].notna().sum() > 0:
+                            col_data = df[col].dropna()
+                            with st.expander(f"📊 {col}"):
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Sum", f"{col_data.sum():,.2f}")
+                                with col2:
+                                    st.metric("Average", f"{col_data.mean():,.2f}")
+                                with col3:
+                                    st.metric("Count", f"{len(col_data):,}")
+                    except:
+                        pass
+            else:
+                st.info("No financial columns detected. This might be a descriptive dataset.")
+                
+                # Show what columns ARE available
+                st.markdown("##### Available Columns")
+                text_cols = df.select_dtypes(include=['object']).columns[:10]
+                for col in text_cols:
+                    unique_count = df[col].nunique()
+                    st.write(f"• **{col}**: {unique_count} unique values")
     
     with tab3:
         st.markdown("#### Operational Analysis")
