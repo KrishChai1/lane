@@ -916,7 +916,7 @@ def display_lane_analysis():
             # Summary table
             st.dataframe(
                 load_counts.reset_index().rename(columns={'index': load_col, load_col: 'Record Count'}),
-                width="auto",
+                use_container_width=True,
                 height=300
             )
         
@@ -1063,7 +1063,7 @@ def display_lane_analysis():
             st.write(f"Showing {len(filtered_df)} records")
             st.dataframe(
                 filtered_df.head(500),
-                width="auto",
+                use_container_width=True,
                 height=400
             )
             
@@ -1075,7 +1075,7 @@ def display_lane_analysis():
                 if len(numeric_cols) > 0:
                     st.dataframe(
                         filtered_df[numeric_cols].describe(),
-                        width="auto"
+                        use_container_width=True
                     )
     
     else:
@@ -1089,7 +1089,7 @@ def display_lane_analysis():
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         if len(numeric_cols) > 0:
             st.write("**Numeric Columns Summary:**")
-            st.dataframe(df[numeric_cols].describe(), width="auto")
+            st.dataframe(df[numeric_cols].describe(), use_container_width=True)
         
         # Text columns
         text_cols = df.select_dtypes(include=['object']).columns
@@ -1101,7 +1101,7 @@ def display_lane_analysis():
         
         # Sample data
         st.write("**Sample Data (first 100 rows):**")
-        st.dataframe(df.head(100), width="auto", height=400)
+        st.dataframe(df.head(100), use_container_width=True, height=400)
     """Comprehensive lane analysis"""
     
     st.markdown("### 🛤️ Comprehensive Lane Analysis")
@@ -1202,7 +1202,7 @@ def display_lane_analysis():
             
             st.dataframe(
                 lane_analysis[display_cols].style.format(format_dict),
-                width="auto",
+                use_container_width=True,
                 hide_index=True,
                 height=400
             )
@@ -1260,7 +1260,7 @@ def display_lane_analysis():
             
             st.dataframe(
                 carrier_summary.style.format(format_dict),
-                width="auto",
+                use_container_width=True,
                 height=400
             )
             
@@ -1336,7 +1336,7 @@ def display_lane_analysis():
                     
                     st.dataframe(
                         consolidation_opps[display_cols].style.format(format_dict),
-                        width="auto",
+                        use_container_width=True,
                         hide_index=True,
                         height=400
                     )
@@ -1554,7 +1554,7 @@ def display_route_optimizer():
                     'Reliability': '{}%',
                     'Score': '{:.0f}'
                 }).background_gradient(subset=['Score'], cmap='RdYlGn'),
-                width="auto",
+                use_container_width=True,
                 hide_index=True
             )
 
