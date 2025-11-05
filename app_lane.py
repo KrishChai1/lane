@@ -782,7 +782,7 @@ def display_dashboard():
                     secondary_y=True,
                 )
                 fig.update_layout(height=300, title_text="Daily Cost & Volume Trends")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, key="dashboard_trend")
             except:
                 st.info("Date analysis requires date columns")
     
@@ -793,7 +793,7 @@ def display_dashboard():
                 fig = px.pie(values=carrier_dist.values, names=carrier_dist.index,
                            title='Top 5 Carriers by Volume')
                 fig.update_layout(height=300)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, key="dashboard_carrier")
             except:
                 st.info("Carrier distribution will appear here")
     
@@ -815,42 +815,73 @@ def display_lane_analysis():
         st.warning("Please upload data files first")
         return
     
-    # Get main data
+    # Get main data - try multiple approaches to find the right table
     df = None
+    
+    # First try to find Load_Main table
     for key, data in st.session_state.data_cache.items():
-        if 'main' in key.lower() or 'load' in key.lower():
+        if 'Load_Main' in key or 'main' in key.lower() or 'load' in key.lower():
             df = data
             break
     
+    # If not found, use the largest table
+    if df is None and st.session_state.data_cache:
+        df = max(st.session_state.data_cache.values(), key=len)
+    
     if df is None:
-        df = list(st.session_state.data_cache.values())[0]
+        st.warning("No data available for analysis")
+        return
+    
+    # Debug info
+    with st.expander("📊 Data Info", expanded=False):
+        st.write(f"Using table with {len(df)} rows and {len(df.columns)} columns")
+        st.write("Available columns:", df.columns.tolist()[:20])
     
     tab1, tab2, tab3, tab4 = st.tabs([
         "📊 Performance", "🚛 Carriers", "💡 Consolidation", "📈 Optimization"
     ])
     
     with tab1:
-        if 'Origin_City' in df.columns and 'Destination_City' in df.columns:
-            lane_analysis = df.groupby(['Origin_City', 'Destination_City']).agg({
-                df.columns[0]: 'count',
-                'Total_Cost': 'mean' if 'Total_Cost' in df.columns else lambda x: 0,
-                'Transit_Days': 'mean' if 'Transit_Days' in df.columns else lambda x: 0
+        # Check for required columns and show what's available
+        has_origin = 'Origin_City' in df.columns or any('origin' in col.lower() for col in df.columns)
+        has_dest = 'Destination_City' in df.columns or any('dest' in col.lower() for col in df.columns)
+        
+        if has_origin and has_dest:
+            # Find the actual column names
+            origin_col = 'Origin_City' if 'Origin_City' in df.columns else [col for col in df.columns if 'origin' in col.lower()][0]
+            dest_col = 'Destination_City' if 'Destination_City' in df.columns else [col for col in df.columns if 'dest' in col.lower()][0]
+            
+            # Create lane analysis
+            lane_analysis = df.groupby([origin_col, dest_col]).agg({
+                df.columns[0]: 'count'
             })
-            lane_analysis.columns = ['Loads', 'Avg_Cost', 'Avg_Transit']
+            lane_analysis.columns = ['Loads']
+            
+            # Add cost analysis if available
+            cost_cols = [col for col in df.columns if any(term in col.lower() for term in ['cost', 'charge', 'amount', 'rate'])]
+            if cost_cols:
+                lane_analysis['Avg_Cost'] = df.groupby([origin_col, dest_col])[cost_cols[0]].mean()
+            
+            # Add transit analysis if available
+            transit_cols = [col for col in df.columns if 'transit' in col.lower() or 'days' in col.lower()]
+            if transit_cols:
+                lane_analysis['Avg_Transit'] = df.groupby([origin_col, dest_col])[transit_cols[0]].mean()
+            
             lane_analysis = lane_analysis.sort_values('Loads', ascending=False).head(20)
             lane_analysis = lane_analysis.reset_index()
-            lane_analysis['Lane'] = lane_analysis['Origin_City'] + ' → ' + lane_analysis['Destination_City']
+            lane_analysis['Lane'] = lane_analysis[origin_col].astype(str) + ' → ' + lane_analysis[dest_col].astype(str)
             
             # Visualizations
             col1, col2 = st.columns(2)
             
             with col1:
                 fig = px.bar(lane_analysis.head(10), x='Loads', y='Lane',
-                            orientation='h', color='Avg_Cost',
-                            color_continuous_scale='RdYlGn_r',
-                            title='Top 10 Lanes by Volume')
+                            orientation='h',
+                            title='Top 10 Lanes by Volume',
+                            color='Loads',
+                            color_continuous_scale='Blues')
                 fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, key="lane_bar")
             
             with col2:
                 if 'Avg_Cost' in lane_analysis.columns:
@@ -858,92 +889,215 @@ def display_lane_analysis():
                                    size='Loads', hover_data=['Lane'],
                                    title='Cost vs Volume Analysis')
                     fig.update_layout(height=400)
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, key="lane_scatter")
+                else:
+                    st.info("Cost data not available for visualization")
             
             # Detailed table
+            display_cols = ['Lane', 'Loads']
+            format_dict = {}
+            
+            if 'Avg_Cost' in lane_analysis.columns:
+                display_cols.append('Avg_Cost')
+                format_dict['Avg_Cost'] = '${:,.0f}'
+                
+            if 'Avg_Transit' in lane_analysis.columns:
+                display_cols.append('Avg_Transit')
+                format_dict['Avg_Transit'] = '{:.1f} days'
+            
             st.dataframe(
-                lane_analysis[['Lane', 'Loads', 'Avg_Cost', 'Avg_Transit']].style.format({
-                    'Avg_Cost': '${:,.0f}',
-                    'Avg_Transit': '{:.1f} days'
-                }),
-                use_container_width=True,
-                hide_index=True
+                lane_analysis[display_cols].style.format(format_dict),
+                width="auto",
+                hide_index=True,
+                height=400
             )
+        else:
+            # Show what columns ARE available
+            st.info("Lane analysis requires Origin and Destination columns")
+            st.write("**Available columns in your data:**")
+            cols = st.columns(3)
+            for idx, col in enumerate(df.columns[:30]):
+                with cols[idx % 3]:
+                    st.write(f"• {col}")
     
     with tab2:
-        if 'Selected_Carrier' in df.columns:
-            carrier_summary = df.groupby('Selected_Carrier').agg({
-                df.columns[0]: 'count',
-                'Total_Cost': 'mean' if 'Total_Cost' in df.columns else lambda x: 0,
-                'Transit_Days': 'mean' if 'Transit_Days' in df.columns else lambda x: 0
-            })
-            carrier_summary.columns = ['Loads', 'Avg_Cost', 'Avg_Transit']
+        # Carrier analysis - find carrier column
+        carrier_cols = [col for col in df.columns if 'carrier' in col.lower() or 'scac' in col.lower()]
+        
+        if carrier_cols or 'Selected_Carrier' in df.columns:
+            carrier_col = 'Selected_Carrier' if 'Selected_Carrier' in df.columns else carrier_cols[0]
             
-            if 'On_Time_Delivery' in df.columns:
-                carrier_summary['OT%'] = df.groupby('Selected_Carrier')['On_Time_Delivery'].apply(
-                    lambda x: (x == 'Yes').mean() * 100
+            carrier_summary = df.groupby(carrier_col).agg({
+                df.columns[0]: 'count'
+            })
+            carrier_summary.columns = ['Loads']
+            
+            # Add cost if available
+            cost_cols = [col for col in df.columns if any(term in col.lower() for term in ['cost', 'charge', 'amount'])]
+            if cost_cols:
+                carrier_summary['Avg_Cost'] = df.groupby(carrier_col)[cost_cols[0]].mean()
+                carrier_summary['Total_Cost'] = df.groupby(carrier_col)[cost_cols[0]].sum()
+            
+            # Add transit if available
+            transit_cols = [col for col in df.columns if 'transit' in col.lower() or 'days' in col.lower()]
+            if transit_cols:
+                carrier_summary['Avg_Transit'] = df.groupby(carrier_col)[transit_cols[0]].mean()
+            
+            # Add on-time if available
+            ot_cols = [col for col in df.columns if 'on_time' in col.lower() or 'otd' in col.lower()]
+            if ot_cols:
+                carrier_summary['OT%'] = df.groupby(carrier_col)[ot_cols[0]].apply(
+                    lambda x: (x == 'Yes').mean() * 100 if x.dtype == 'object' else x.mean()
                 )
             
             carrier_summary = carrier_summary.sort_values('Loads', ascending=False)
             
+            # Format dictionary for display
+            format_dict = {}
+            if 'Avg_Cost' in carrier_summary.columns:
+                format_dict['Avg_Cost'] = '${:,.0f}'
+            if 'Total_Cost' in carrier_summary.columns:
+                format_dict['Total_Cost'] = '${:,.0f}'
+            if 'Avg_Transit' in carrier_summary.columns:
+                format_dict['Avg_Transit'] = '{:.1f}d'
+            if 'OT%' in carrier_summary.columns:
+                format_dict['OT%'] = '{:.0f}%'
+            
             st.dataframe(
-                carrier_summary.style.format({
-                    'Avg_Cost': '${:,.0f}',
-                    'Avg_Transit': '{:.1f}d',
-                    'OT%': '{:.0f}%' if 'OT%' in carrier_summary.columns else ''
-                }),
-                use_container_width=True
+                carrier_summary.style.format(format_dict),
+                width="auto",
+                height=400
             )
+            
+            # Visualization
+            fig = px.bar(carrier_summary.head(10).reset_index(), 
+                        x=carrier_col, y='Loads',
+                        title='Top 10 Carriers by Volume',
+                        color='Loads',
+                        color_continuous_scale='Viridis')
+            st.plotly_chart(fig, key="carrier_bar")
+        else:
+            st.info("Carrier analysis requires carrier column")
+            st.write("Available columns:", df.columns.tolist()[:20])
     
     with tab3:
-        if 'Pickup_Date' in df.columns and 'Origin_City' in df.columns:
+        # Consolidation analysis
+        date_cols = [col for col in df.columns if 'date' in col.lower() or 'pickup' in col.lower()]
+        
+        if date_cols and ('Origin_City' in df.columns or any('origin' in col.lower() for col in df.columns)):
             try:
-                df['Ship_Date'] = pd.to_datetime(df['Pickup_Date'], errors='coerce').dt.date
-                consolidation = df.groupby(['Origin_City', 'Destination_City', 'Ship_Date']).agg({
-                    df.columns[0]: 'count',
-                    'Total_Weight_lbs': 'sum' if 'Total_Weight_lbs' in df.columns else lambda x: 0,
-                    'Total_Cost': 'sum' if 'Total_Cost' in df.columns else lambda x: 0
-                }).reset_index()
+                # Get date column and origin/dest columns
+                date_col = date_cols[0]
+                origin_col = 'Origin_City' if 'Origin_City' in df.columns else [col for col in df.columns if 'origin' in col.lower()][0]
+                dest_col = 'Destination_City' if 'Destination_City' in df.columns else [col for col in df.columns if 'dest' in col.lower()][0]
                 
-                consolidation.columns = ['Origin', 'Dest', 'Date', 'Loads', 'Weight', 'Cost']
+                # Convert to date
+                df['Ship_Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.date
+                
+                # Find consolidation opportunities
+                consolidation = df.groupby([origin_col, dest_col, 'Ship_Date']).agg({
+                    df.columns[0]: 'count'
+                })
+                consolidation.columns = ['Loads']
+                
+                # Add weight if available
+                weight_cols = [col for col in df.columns if 'weight' in col.lower() or 'wgt' in col.lower()]
+                if weight_cols:
+                    consolidation['Total_Weight'] = df.groupby([origin_col, dest_col, 'Ship_Date'])[weight_cols[0]].sum()
+                
+                # Add cost if available
+                cost_cols = [col for col in df.columns if any(term in col.lower() for term in ['cost', 'charge', 'amount'])]
+                if cost_cols:
+                    consolidation['Total_Cost'] = df.groupby([origin_col, dest_col, 'Ship_Date'])[cost_cols[0]].sum()
+                
+                consolidation = consolidation.reset_index()
                 consolidation_opps = consolidation[consolidation['Loads'] > 1]
                 
                 if len(consolidation_opps) > 0:
-                    consolidation_opps['Savings'] = consolidation_opps['Cost'] * 0.15
-                    consolidation_opps['Lane'] = consolidation_opps['Origin'] + ' → ' + consolidation_opps['Dest']
-                    consolidation_opps = consolidation_opps.sort_values('Savings', ascending=False).head(20)
+                    consolidation_opps['Lane'] = consolidation_opps[origin_col].astype(str) + ' → ' + consolidation_opps[dest_col].astype(str)
                     
-                    total_savings = consolidation_opps['Savings'].sum()
-                    st.success(f"💰 Total Consolidation Savings Potential: ${total_savings:,.0f}")
+                    if 'Total_Cost' in consolidation_opps.columns:
+                        consolidation_opps['Savings'] = consolidation_opps['Total_Cost'] * 0.15
+                        total_savings = consolidation_opps['Savings'].sum()
+                        st.success(f"💰 Total Consolidation Savings Potential: ${total_savings:,.0f}")
+                    
+                    consolidation_opps = consolidation_opps.sort_values('Loads', ascending=False).head(20)
+                    
+                    # Display columns
+                    display_cols = ['Lane', 'Ship_Date', 'Loads']
+                    format_dict = {'Loads': '{:,.0f}'}
+                    
+                    if 'Total_Weight' in consolidation_opps.columns:
+                        display_cols.append('Total_Weight')
+                        format_dict['Total_Weight'] = '{:,.0f} lbs'
+                        
+                    if 'Total_Cost' in consolidation_opps.columns:
+                        display_cols.append('Total_Cost')
+                        format_dict['Total_Cost'] = '${:,.0f}'
+                        
+                    if 'Savings' in consolidation_opps.columns:
+                        display_cols.append('Savings')
+                        format_dict['Savings'] = '${:,.0f}'
                     
                     st.dataframe(
-                        consolidation_opps[['Lane', 'Date', 'Loads', 'Weight', 'Cost', 'Savings']].style.format({
-                            'Weight': '{:,.0f} lbs',
-                            'Cost': '${:,.0f}',
-                            'Savings': '${:,.0f}'
-                        }),
-                        use_container_width=True,
-                        hide_index=True
+                        consolidation_opps[display_cols].style.format(format_dict),
+                        width="auto",
+                        hide_index=True,
+                        height=400
                     )
                 else:
-                    st.info("No consolidation opportunities found")
-            except:
-                st.info("Date columns needed for consolidation analysis")
+                    st.info("No consolidation opportunities found (looking for multiple shipments on same day/lane)")
+            except Exception as e:
+                st.warning(f"Unable to analyze consolidation: {str(e)}")
+        else:
+            st.info("Consolidation analysis requires date and origin/destination columns")
     
     with tab4:
-        if 'Service_Type' in df.columns and 'Total_Weight_lbs' in df.columns:
-            ltl_heavy = df[(df['Service_Type'] == 'LTL') & (df['Total_Weight_lbs'] > 8000)]
-            tl_light = df[(df['Service_Type'] == 'TL') & (df['Total_Weight_lbs'] < 10000)]
+        # Mode optimization
+        service_cols = [col for col in df.columns if 'service' in col.lower() or 'mode' in col.lower()]
+        weight_cols = [col for col in df.columns if 'weight' in col.lower() or 'wgt' in col.lower()]
+        
+        if service_cols and weight_cols:
+            service_col = 'Service_Type' if 'Service_Type' in df.columns else service_cols[0]
+            weight_col = 'Total_Weight_lbs' if 'Total_Weight_lbs' in df.columns else weight_cols[0]
             
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.info(f"**{len(ltl_heavy)}** LTL shipments → Convert to TL")
-                st.info(f"**{len(tl_light)}** TL shipments → Convert to LTL")
-            
-            with col2:
-                potential_savings = len(ltl_heavy) * 300 + len(tl_light) * 150
-                st.success(f"**Mode Optimization Savings**\n${potential_savings:,.0f}")
+            try:
+                # Convert weight to numeric
+                df[weight_col] = pd.to_numeric(df[weight_col], errors='coerce')
+                
+                # Find optimization opportunities
+                ltl_heavy = df[(df[service_col].str.upper() == 'LTL') & (df[weight_col] > 8000)]
+                tl_light = df[(df[service_col].str.upper() == 'TL') & (df[weight_col] < 10000)]
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.metric("LTL → TL Opportunities", len(ltl_heavy))
+                    st.info(f"Convert {len(ltl_heavy)} heavy LTL shipments to TL")
+                    st.metric("TL → LTL Opportunities", len(tl_light))
+                    st.info(f"Convert {len(tl_light)} light TL shipments to LTL")
+                
+                with col2:
+                    potential_savings = len(ltl_heavy) * 300 + len(tl_light) * 150
+                    st.success(f"**Total Mode Optimization Savings**")
+                    st.metric("Potential Savings", f"${potential_savings:,.0f}")
+                    st.info(f"Average savings: ${potential_savings / (len(ltl_heavy) + len(tl_light) + 1):.0f} per shipment")
+                
+                # Show distribution
+                if len(ltl_heavy) > 0 or len(tl_light) > 0:
+                    fig = px.scatter(df.sample(min(1000, len(df))), 
+                                   x=weight_col, 
+                                   y=service_col,
+                                   title='Service Type vs Weight Distribution',
+                                   color=service_col)
+                    fig.add_vline(x=8000, line_dash="dash", line_color="red", annotation_text="LTL/TL Threshold")
+                    st.plotly_chart(fig, key="mode_scatter")
+                    
+            except Exception as e:
+                st.warning(f"Unable to analyze mode optimization: {str(e)}")
+        else:
+            st.info("Mode optimization requires service type and weight columns")
+            st.write("Available columns:", df.columns.tolist()[:20])
 
 def display_route_optimizer():
     """Advanced route optimization tool"""
@@ -1105,7 +1259,7 @@ def display_route_optimizer():
                     'Reliability': '{}%',
                     'Score': '{:.0f}'
                 }).background_gradient(subset=['Score'], cmap='RdYlGn'),
-                use_container_width=True,
+                width="auto",
                 hide_index=True
             )
 
