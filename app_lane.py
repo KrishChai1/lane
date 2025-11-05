@@ -1593,39 +1593,78 @@ def display_carrier_rates():
                 st.metric("Total Rate Records", f"{len(all_rates):,}")
             
             with col2:
-                cost_cols = [col for col in all_rates.columns if 'cost' in col.lower() or 'charge' in col.lower()]
+                cost_cols = [col for col in all_rates.columns if 'cost' in col.lower() or 'charge' in col.lower() or 'rate' in col.lower() or 'amount' in col.lower()]
                 if cost_cols:
-                    total = all_rates[cost_cols[0]].sum()
-                    st.metric("Total Charges", f"${total:,.0f}")
+                    try:
+                        # Try to find a valid numeric column
+                        for col in cost_cols:
+                            total = pd.to_numeric(all_rates[col], errors='coerce').sum()
+                            if pd.notna(total) and total > 0:
+                                st.metric("Total Charges", f"${total:,.0f}")
+                                break
+                        else:
+                            st.metric("Total Charges", "No valid data")
+                    except:
+                        st.metric("Total Charges", "N/A")
+                else:
+                    st.metric("Total Charges", "N/A")
             
             with col3:
-                if 'Carrier' in all_rates.columns or 'carrier_name' in all_rates.columns:
-                    carrier_col = 'Carrier' if 'Carrier' in all_rates.columns else 'carrier_name'
-                    unique_carriers = all_rates[carrier_col].nunique()
-                    st.metric("Unique Carriers", unique_carriers)
+                carrier_cols = [col for col in all_rates.columns if 'carrier' in col.lower()]
+                if carrier_cols:
+                    try:
+                        unique_carriers = all_rates[carrier_cols[0]].nunique()
+                        st.metric("Unique Carriers", f"{unique_carriers:,}")
+                    except:
+                        st.metric("Unique Carriers", "N/A")
+                elif 'Carrier' in all_rates.columns:
+                    unique_carriers = all_rates['Carrier'].nunique()
+                    st.metric("Unique Carriers", f"{unique_carriers:,}")
+                else:
+                    st.metric("Columns", len(all_rates.columns))
             
             # Show sample data
-            st.dataframe(all_rates.head(100), use_container_width=True)
+            st.write("**Sample Rate Data:**")
+            st.dataframe(all_rates.head(100), use_container_width=True, height=300)
+        else:
+            st.info("No rate tables found in uploaded data")
     
     with tab2:
         if invoice_tables:
             st.markdown("#### Invoice Analysis")
             
             for name, df in invoice_tables:
-                with st.expander(f"📄 {name} ({len(df)} records)"):
+                with st.expander(f"📄 {name} ({len(df)} records)", expanded=False):
                     # Find amount columns
-                    amount_cols = [col for col in df.columns if 'amount' in col.lower() or 'total' in col.lower()]
+                    amount_cols = [col for col in df.columns if any(term in col.lower() for term in ['amount', 'total', 'charge', 'cost', 'sum', 'rate'])]
                     
                     if amount_cols:
-                        for col in amount_cols[:2]:
+                        col_stats = []
+                        for col in amount_cols[:3]:  # Process first 3 amount columns
                             try:
-                                total = pd.to_numeric(df[col], errors='coerce').sum()
-                                avg = pd.to_numeric(df[col], errors='coerce').mean()
-                                st.metric(f"{col}", f"Total: ${total:,.0f} | Avg: ${avg:,.0f}")
+                                numeric_col = pd.to_numeric(df[col], errors='coerce')
+                                # Only process if we have valid numeric data
+                                if numeric_col.notna().any():
+                                    total = numeric_col.sum()
+                                    avg = numeric_col.mean()
+                                    if pd.notna(total) and pd.notna(avg):
+                                        col_stats.append({
+                                            'Column': col,
+                                            'Total': f"${total:,.2f}",
+                                            'Average': f"${avg:,.2f}"
+                                        })
                             except:
                                 pass
+                        
+                        if col_stats:
+                            st.write("**Financial Summary:**")
+                            for stat in col_stats:
+                                st.write(f"• {stat['Column']}: Total {stat['Total']} | Avg {stat['Average']}")
                     
-                    st.dataframe(df.head(50), use_container_width=True)
+                    st.write("**Sample Invoice Data:**")
+                    st.dataframe(df.head(50), use_container_width=True, height=200)
+        else:
+            st.info("No invoice tables found in uploaded data")
     
     with tab3:
         st.markdown("#### Invoice Reconciliation")
@@ -1642,6 +1681,8 @@ def display_carrier_rates():
                 st.metric("Invoices", len(invoice_tables))
             with col3:
                 st.metric("Match Rate", f"{random.randint(85, 95)}%")
+            
+            st.info("Upload complete rate and invoice files for detailed reconciliation analysis")
         else:
             st.info("Upload both rate and invoice files for reconciliation")
 
