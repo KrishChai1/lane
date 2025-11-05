@@ -1360,109 +1360,235 @@ def display_lane_analysis():
         with tab2:
             st.markdown("#### Charge Analysis")
             
-            # Analyze charges/rates
-            charge_cols = []
+            # Separate numeric and text columns properly
+            numeric_charge_cols = []
+            text_charge_cols = []
+            
             for col in df.columns:
-                if any(term in col.lower() for term in ['charge', 'rate', 'cost', 'amount', 'sum']):
-                    charge_cols.append(col)
+                # Skip obvious non-charge columns
+                if col in ['LoadID', 'Load_ID', 'InvoiceNumber', 'CreationDate', 'UpdateDate', 
+                          'CreatedBy', 'UpdateBy', 'oid', 'alloc_oid', 'PIGId', 'LCICI_ID', 'Int_ID']:
+                    continue
+                    
+                # Check if it's a charge-related column
+                if any(term in col.lower() for term in ['charge', 'rate', 'cost', 'amount', 'sum', 'price']):
+                    # Test if it's numeric or text
+                    sample = df[col].dropna().head(100)
+                    if len(sample) > 0:
+                        try:
+                            # Try converting to numeric
+                            numeric_test = pd.to_numeric(sample, errors='coerce')
+                            # If more than 50% converts successfully, it's numeric
+                            if numeric_test.notna().sum() > len(sample) * 0.5:
+                                numeric_charge_cols.append(col)
+                            else:
+                                text_charge_cols.append(col)
+                        except:
+                            text_charge_cols.append(col)
+                elif col in ['Type', 'Description', 'Class', 'Qualif', 'Attribute', 'Attribute1', 'Attribute2']:
+                    text_charge_cols.append(col)
             
-            if charge_cols:
-                st.write(f"Found {len(charge_cols)} charge-related columns:")
-                
-                for col in charge_cols[:5]:  # Show first 5
+            # Also check for purely numeric columns that might be charges
+            for col in ['Weight', 'Quan', 'DimW', 'Seq', 'Edi', 'Fak']:
+                if col in df.columns:
                     try:
-                        # Convert to numeric
-                        numeric_col = pd.to_numeric(df[col], errors='coerce')
-                        
-                        col1, col2, col3, col4 = st.columns(4)
-                        with col1:
-                            st.metric(f"{col} - Total", f"${numeric_col.sum():,.2f}")
-                        with col2:
-                            st.metric("Average", f"${numeric_col.mean():,.2f}")
-                        with col3:
-                            st.metric("Median", f"${numeric_col.median():,.2f}")
-                        with col4:
-                            st.metric("Max", f"${numeric_col.max():,.2f}")
-                        
-                        # Distribution chart
-                        fig = px.histogram(
-                            numeric_col.dropna(),
-                            nbins=30,
-                            title=f'Distribution of {col}',
-                            labels={'value': col, 'count': 'Frequency'}
-                        )
-                        fig.update_layout(height=300)
-                        st.plotly_chart(fig, key=f"charge_hist_{col}")
-                        
-                    except Exception as e:
-                        st.info(f"Could not analyze {col}: {str(e)}")
+                        if pd.to_numeric(df[col], errors='coerce').notna().sum() > 0:
+                            numeric_charge_cols.append(col)
+                    except:
+                        pass
             
-            # Type analysis if available
-            if 'Type' in df.columns:
-                st.markdown("##### Charge Types")
-                type_counts = df['Type'].value_counts().head(10)
+            st.write(f"📊 Found {len(numeric_charge_cols)} numeric columns and {len(text_charge_cols)} category columns")
+            
+            # Process numeric columns
+            if numeric_charge_cols:
+                st.markdown("##### Financial Metrics")
                 
-                fig = px.pie(
-                    values=type_counts.values,
-                    names=type_counts.index,
-                    title='Distribution of Charge Types'
-                )
-                st.plotly_chart(fig, key="type_pie")
+                total_all = 0
+                valid_cols_data = []
+                
+                for col in numeric_charge_cols:
+                    try:
+                        numeric_data = pd.to_numeric(df[col], errors='coerce')
+                        valid_data = numeric_data[numeric_data.notna() & (numeric_data != 0)]
+                        
+                        if len(valid_data) > 0:
+                            col_total = valid_data.sum()
+                            col_mean = valid_data.mean()
+                            col_median = valid_data.median()
+                            col_max = valid_data.max()
+                            
+                            if col_total > 0:  # Only show positive totals
+                                valid_cols_data.append({
+                                    'Column': col,
+                                    'Total': col_total,
+                                    'Average': col_mean,
+                                    'Median': col_median,
+                                    'Max': col_max,
+                                    'Count': len(valid_data)
+                                })
+                                total_all += col_total
+                    except:
+                        pass
+                
+                if valid_cols_data:
+                    # Show overall total
+                    st.success(f"💰 **Total Financial Volume: ${total_all:,.2f}**")
+                    
+                    # Show details for each valid column
+                    for col_data in sorted(valid_cols_data, key=lambda x: x['Total'], reverse=True)[:3]:
+                        with st.expander(f"💵 {col_data['Column']} - ${col_data['Total']:,.2f}"):
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric("Total", f"${col_data['Total']:,.2f}")
+                            with col2:
+                                st.metric("Average", f"${col_data['Average']:,.2f}")
+                            with col3:
+                                st.metric("Median", f"${col_data['Median']:,.2f}")
+                            with col4:
+                                st.metric("Max", f"${col_data['Max']:,.2f}")
+                            
+                            st.info(f"📊 {col_data['Count']} valid transactions")
+                else:
+                    st.warning("No valid financial data found in numeric columns")
+            
+            # Process text/category columns separately
+            if text_charge_cols:
+                st.markdown("##### Category Analysis")
+                
+                # Focus on Type column if it exists
+                if 'Type' in text_charge_cols:
+                    st.markdown("###### Charge Types Distribution")
+                    type_counts = df['Type'].value_counts().head(10)
+                    
+                    fig = px.pie(
+                        values=type_counts.values,
+                        names=type_counts.index,
+                        title='Distribution by Charge Type',
+                        color_discrete_sequence=px.colors.qualitative.Set3
+                    )
+                    st.plotly_chart(fig, key="type_pie_charge_tab")
+                    
+                    # Show type breakdown
+                    with st.expander("View Type Details"):
+                        for charge_type, count in type_counts.items():
+                            percentage = (count / len(df)) * 100
+                            st.write(f"• **{charge_type}**: {count:,} records ({percentage:.1f}%)")
+                
+                # Show other text columns
+                other_text_cols = [col for col in text_charge_cols if col != 'Type']
+                if other_text_cols:
+                    with st.expander("Other Categories"):
+                        for col in other_text_cols[:3]:
+                            unique_vals = df[col].nunique()
+                            st.write(f"• **{col}**: {unique_vals} unique values")
         
         with tab3:
             st.markdown("#### Trend Analysis")
             
-            # Look for date columns
-            date_cols = [col for col in df.columns if 'date' in col.lower()]
+            # Look for date columns more thoroughly
+            date_cols = []
+            for col in df.columns:
+                if any(term in col.lower() for term in ['date', 'time', 'created', 'updated']):
+                    date_cols.append(col)
             
             if date_cols:
                 date_col = date_cols[0]
-                try:
-                    df['Date'] = pd.to_datetime(df[date_col], errors='coerce')
-                    
-                    # Daily counts
-                    daily_counts = df.groupby(df['Date'].dt.date).size().reset_index()
-                    daily_counts.columns = ['Date', 'Count']
-                    
-                    fig = px.line(
-                        daily_counts,
-                        x='Date',
-                        y='Count',
-                        title='Daily Record Count',
-                        line_shape='spline'
-                    )
-                    fig.update_layout(height=400)
-                    st.plotly_chart(fig, key="trend_line")
-                    
-                except:
-                    st.info("Unable to create time-based analysis")
-            else:
-                st.info("No date columns found for trend analysis")
-            
-            # Load-based trends
-            if charge_cols:
-                st.markdown("##### Charges by Load")
+                st.info(f"Using date column: {date_col}")
                 
-                # Sum charges by load
-                for col in charge_cols[:1]:  # Use first charge column
-                    try:
-                        numeric_col = pd.to_numeric(df[col], errors='coerce')
-                        df['Numeric_Charge'] = numeric_col
+                try:
+                    df['ParsedDate'] = pd.to_datetime(df[date_col], errors='coerce')
+                    valid_dates = df[df['ParsedDate'].notna()]
+                    
+                    if len(valid_dates) > 0:
+                        # Daily aggregation
+                        daily_counts = valid_dates.groupby(valid_dates['ParsedDate'].dt.date).size().reset_index()
+                        daily_counts.columns = ['Date', 'Count']
                         
-                        load_charges = df.groupby(load_col)['Numeric_Charge'].sum().reset_index()
-                        load_charges = load_charges.nlargest(20, 'Numeric_Charge')
-                        
-                        fig = px.bar(
-                            load_charges,
-                            x=load_col,
-                            y='Numeric_Charge',
-                            title=f'Top 20 Loads by Total {col}'
+                        fig = px.line(
+                            daily_counts,
+                            x='Date',
+                            y='Count',
+                            title='Daily Transaction Volume',
+                            line_shape='linear'
                         )
                         fig.update_layout(height=400)
-                        st.plotly_chart(fig, key="load_charges_bar")
+                        st.plotly_chart(fig, key="trend_line")
                         
-                    except:
-                        pass
+                        # If we have LoadID, show load trends
+                        if 'LoadID' in df.columns:
+                            st.markdown("##### Load Activity Over Time")
+                            load_daily = valid_dates.groupby(
+                                [valid_dates['ParsedDate'].dt.date, 'LoadID']
+                            ).size().reset_index()
+                            load_daily.columns = ['Date', 'LoadID', 'Count']
+                            
+                            # Get top 5 loads
+                            top_loads = df['LoadID'].value_counts().head(5).index
+                            top_load_data = load_daily[load_daily['LoadID'].isin(top_loads)]
+                            
+                            if len(top_load_data) > 0:
+                                fig = px.line(
+                                    top_load_data,
+                                    x='Date',
+                                    y='Count',
+                                    color='LoadID',
+                                    title='Top 5 Loads Activity Trend'
+                                )
+                                fig.update_layout(height=400)
+                                st.plotly_chart(fig, key="load_trend")
+                        
+                        # Show any numeric column trends
+                        numeric_cols = []
+                        for col in df.columns:
+                            if col not in ['LoadID', 'InvoiceNumber', date_col]:
+                                try:
+                                    if pd.to_numeric(df[col], errors='coerce').notna().sum() > 100:
+                                        numeric_cols.append(col)
+                                except:
+                                    pass
+                        
+                        if numeric_cols:
+                            selected_col = st.selectbox("Select metric for trend analysis:", numeric_cols)
+                            
+                            if selected_col:
+                                valid_dates[f'Numeric_{selected_col}'] = pd.to_numeric(
+                                    valid_dates[selected_col], errors='coerce'
+                                )
+                                
+                                daily_avg = valid_dates.groupby(
+                                    valid_dates['ParsedDate'].dt.date
+                                )[f'Numeric_{selected_col}'].mean().reset_index()
+                                daily_avg.columns = ['Date', 'Average']
+                                
+                                fig = px.bar(
+                                    daily_avg,
+                                    x='Date',
+                                    y='Average',
+                                    title=f'Daily Average: {selected_col}',
+                                    color='Average',
+                                    color_continuous_scale='Blues'
+                                )
+                                fig.update_layout(height=350)
+                                st.plotly_chart(fig, key="metric_trend")
+                    else:
+                        st.warning("Could not parse dates from the date column")
+                except Exception as e:
+                    st.error(f"Error processing dates: {str(e)}")
+            else:
+                st.info("No date columns found for trend analysis")
+                
+                # Show static analysis instead
+                if 'LoadID' in df.columns:
+                    st.markdown("##### Static Load Analysis")
+                    load_stats = df['LoadID'].value_counts().describe()
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Avg Records/Load", f"{load_stats['mean']:.1f}")
+                    with col2:
+                        st.metric("Max Records/Load", f"{load_stats['max']:.0f}")
+                    with col3:
+                        st.metric("Unique Loads", f"{df['LoadID'].nunique():,}")
         
         with tab4:
             st.markdown("#### Detailed Data View")
