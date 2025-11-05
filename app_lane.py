@@ -1225,13 +1225,14 @@ def display_lane_analysis():
     with tab1:
         st.markdown("#### Lane Analysis")
         
-        # Check if we now have lane data
-        if 'Origin_City' in df.columns and 'Destination_City' in df.columns:
-            # Create lane analysis
-            lane_analysis = df.groupby(['Origin_City', 'Destination_City']).agg({
-                df.columns[0]: 'count'
-            })
-            lane_analysis.columns = ['Shipments']
+        try:
+            # Check if we now have lane data
+            if 'Origin_City' in df.columns and 'Destination_City' in df.columns:
+                # Create lane analysis
+                lane_analysis = df.groupby(['Origin_City', 'Destination_City']).agg({
+                    df.columns[0]: 'count'
+                })
+                lane_analysis.columns = ['Shipments']
             
             # Add financial analysis if available
             financial_cols = [col for col in df.columns if any(
@@ -1414,13 +1415,23 @@ def display_lane_analysis():
             
             st.dataframe(
                 lane_analysis[display_cols].style.format(format_dict),
-                use_container_width=True,
                 height=400
             )
         
         else:
             st.warning("Unable to extract lane information from the uploaded data")
             st.info("💡 Upload tracking or main load files that contain origin/destination information")
+            
+        except Exception as e:
+            st.error(f"Error in lane analysis: {str(e)}")
+            st.info("Showing basic data summary instead")
+            
+            # Show basic summary
+            st.write(f"Total Records: {len(df):,}")
+            st.write(f"Columns: {len(df.columns)}")
+            if 'LoadID' in df.columns or 'Load_ID' in df.columns:
+                load_col = 'LoadID' if 'LoadID' in df.columns else 'Load_ID'
+                st.write(f"Unique Loads: {df[load_col].nunique():,}")
     
     # Ensure all remaining tabs show data
     try:
@@ -2463,7 +2474,7 @@ def display_lane_analysis():
             # Summary table
             st.dataframe(
                 load_counts.reset_index().rename(columns={'index': load_col, load_col: 'Record Count'}),
-                use_container_width=True,
+                
                 height=300
             )
         
@@ -2736,7 +2747,7 @@ def display_lane_analysis():
             st.write(f"Showing {len(filtered_df)} records")
             st.dataframe(
                 filtered_df.head(500),
-                use_container_width=True,
+                
                 height=400
             )
             
@@ -2747,8 +2758,7 @@ def display_lane_analysis():
                 numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns
                 if len(numeric_cols) > 0:
                     st.dataframe(
-                        filtered_df[numeric_cols].describe(),
-                        use_container_width=True
+                        filtered_df[numeric_cols].describe()
                     )
     
     else:
@@ -2762,7 +2772,7 @@ def display_lane_analysis():
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         if len(numeric_cols) > 0:
             st.write("**Numeric Columns Summary:**")
-            st.dataframe(df[numeric_cols].describe(), use_container_width=True)
+            st.dataframe(df[numeric_cols].describe(), ))
         
         # Text columns
         text_cols = df.select_dtypes(include=['object']).columns
@@ -2774,7 +2784,7 @@ def display_lane_analysis():
         
         # Sample data
         st.write("**Sample Data (first 100 rows):**")
-        st.dataframe(df.head(100), use_container_width=True, height=400)
+        st.dataframe(df.head(100),  height=400)
     """Comprehensive lane analysis"""
     
     st.markdown("### 🛤️ Comprehensive Lane Analysis")
@@ -2875,7 +2885,7 @@ def display_lane_analysis():
             
             st.dataframe(
                 lane_analysis[display_cols].style.format(format_dict),
-                use_container_width=True,
+                
                 hide_index=True,
                 height=400
             )
@@ -2933,7 +2943,7 @@ def display_lane_analysis():
             
             st.dataframe(
                 carrier_summary.style.format(format_dict),
-                use_container_width=True,
+                
                 height=400
             )
             
@@ -3009,7 +3019,7 @@ def display_lane_analysis():
                     
                     st.dataframe(
                         consolidation_opps[display_cols].style.format(format_dict),
-                        use_container_width=True,
+                        
                         hide_index=True,
                         height=400
                     )
@@ -3113,7 +3123,7 @@ def display_route_optimizer():
         max_transit = st.number_input("Max Transit Days", min_value=1, value=7)
     
     # Optimize button
-    if st.button("🚀 Analyze & Optimize Route", type="primary", use_container_width=True):
+    if st.button("🚀 Analyze & Optimize Route", type="primary", )):
         
         with st.spinner("Analyzing all carriers and routes..."):
             
@@ -3227,7 +3237,7 @@ def display_route_optimizer():
                     'Reliability': '{}%',
                     'Score': '{:.0f}'
                 }).background_gradient(subset=['Score'], cmap='RdYlGn'),
-                use_container_width=True,
+                
                 hide_index=True
             )
 
@@ -3298,7 +3308,7 @@ def display_carrier_rates():
             
             # Show sample data
             st.write("**Sample Rate Data:**")
-            st.dataframe(all_rates.head(100), use_container_width=True, height=300)
+            st.dataframe(all_rates.head(100),  height=300)
         else:
             st.info("No rate tables found in uploaded data")
     
@@ -3335,7 +3345,7 @@ def display_carrier_rates():
                                 st.write(f"• {stat['Column']}: Total {stat['Total']} | Avg {stat['Average']}")
                     
                     st.write("**Sample Invoice Data:**")
-                    st.dataframe(df.head(50), use_container_width=True, height=200)
+                    st.dataframe(df.head(50),  height=200)
         else:
             st.info("No invoice tables found in uploaded data")
     
@@ -3381,7 +3391,7 @@ def display_tracking():
             'Count': [450, 125, 85, 15],
             'Percentage': ['64.3%', '17.9%', '12.1%', '2.1%']
         }
-        st.dataframe(pd.DataFrame(sample_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(sample_data),  hide_index=True)
         
         return
     
@@ -3405,7 +3415,7 @@ def display_tracking():
         st.metric("Data Quality", f"{(1 - tracking_df.isnull().sum().sum() / tracking_df.size) * 100:.0f}%")
     
     # Show tracking data
-    st.dataframe(tracking_df.head(100), use_container_width=True)
+    st.dataframe(tracking_df.head(100), ))
 
 def display_ai_assistant():
     """Enhanced AI Assistant with detailed insights and Q&A"""
@@ -3542,7 +3552,7 @@ def display_ai_assistant():
                     marker_color=['#ef4444', '#10b981', '#f59e0b']
                 ))
                 fig.update_layout(height=200, showlegend=False, margin=dict(t=20, b=20))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, ))
     
     with ai_tabs[1]:
         st.markdown("#### 💬 Ask Your Questions")
@@ -3556,28 +3566,28 @@ def display_ai_assistant():
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("What are my top cost-saving opportunities?", use_container_width=True):
+            if st.button("What are my top cost-saving opportunities?", )):
                 response = analyze_cost_savings(df)
                 st.session_state.chat_history.append(("What are my top cost-saving opportunities?", response))
                 
-            if st.button("Which carriers are underperforming?", use_container_width=True):
+            if st.button("Which carriers are underperforming?", )):
                 response = analyze_carrier_performance(df)
                 st.session_state.chat_history.append(("Which carriers are underperforming?", response))
                 
-            if st.button("What lanes should I consolidate?", use_container_width=True):
+            if st.button("What lanes should I consolidate?", )):
                 response = analyze_consolidation_opportunities(df)
                 st.session_state.chat_history.append(("What lanes should I consolidate?", response))
         
         with col2:
-            if st.button("How can I reduce transit times?", use_container_width=True):
+            if st.button("How can I reduce transit times?", )):
                 response = analyze_transit_optimization(df)
                 st.session_state.chat_history.append(("How can I reduce transit times?", response))
                 
-            if st.button("What's my spend trend?", use_container_width=True):
+            if st.button("What's my spend trend?", )):
                 response = analyze_spend_trend(df)
                 st.session_state.chat_history.append(("What's my spend trend?", response))
                 
-            if st.button("Which modes should I optimize?", use_container_width=True):
+            if st.button("Which modes should I optimize?", )):
                 response = analyze_mode_optimization(df)
                 st.session_state.chat_history.append(("Which modes should I optimize?", response))
         
@@ -4052,7 +4062,7 @@ with st.sidebar:
         if new_files:
             st.info(f"📁 {len(new_files)} new files detected")
             
-            if st.button("⚡ Process All Files", type="primary", use_container_width=True):
+            if st.button("⚡ Process All Files", type="primary", )):
                 with st.spinner(f"Processing {len(new_files)} files..."):
                     processed = FastFileProcessor.process_files_batch(new_files)
                     st.session_state.data_cache.update(processed)
