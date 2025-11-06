@@ -1234,10 +1234,10 @@ def display_lane_analysis():
                 })
                 lane_analysis.columns = ['Shipments']
             
-            # Add financial analysis if available
-            financial_cols = [col for col in df.columns if any(
-                term in col.lower() for term in ['charge', 'rate', 'cost', 'amount', 'sum', 'price', 'fee']
-            ) and not any(skip in col.lower() for skip in ['type', 'description', 'class', 'id', 'date'])]
+                # Add financial analysis if available
+                financial_cols = [col for col in df.columns if any(
+                    term in col.lower() for term in ['charge', 'rate', 'cost', 'amount', 'sum', 'price', 'fee']
+                ) and not any(skip in col.lower() for skip in ['type', 'description', 'class', 'id', 'date'])]
             
             if financial_cols:
                 for col in financial_cols[:3]:  # Try first 3 financial columns
@@ -1417,10 +1417,6 @@ def display_lane_analysis():
                 lane_analysis[display_cols].style.format(format_dict),
                 height=400
             )
-        
-        else:
-            st.warning("Unable to extract lane information from the uploaded data")
-            st.info("💡 Upload tracking or main load files that contain origin/destination information")
             
         except Exception as e:
             st.error(f"Error in lane analysis: {str(e)}")
@@ -2772,7 +2768,7 @@ def display_lane_analysis():
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         if len(numeric_cols) > 0:
             st.write("**Numeric Columns Summary:**")
-            st.dataframe(df[numeric_cols].describe(), ))
+            st.dataframe(df[numeric_cols].describe())
         
         # Text columns
         text_cols = df.select_dtypes(include=['object']).columns
@@ -3123,7 +3119,7 @@ def display_route_optimizer():
         max_transit = st.number_input("Max Transit Days", min_value=1, value=7)
     
     # Optimize button
-    if st.button("🚀 Analyze & Optimize Route", type="primary", )):
+    if st.button("🚀 Analyze & Optimize Route", type="primary"):
         
         with st.spinner("Analyzing all carriers and routes..."):
             
@@ -3415,7 +3411,7 @@ def display_tracking():
         st.metric("Data Quality", f"{(1 - tracking_df.isnull().sum().sum() / tracking_df.size) * 100:.0f}%")
     
     # Show tracking data
-    st.dataframe(tracking_df.head(100), ))
+    st.dataframe(tracking_df.head(100))
 
 def display_ai_assistant():
     """Enhanced AI Assistant with detailed insights and Q&A"""
@@ -3552,7 +3548,7 @@ def display_ai_assistant():
                     marker_color=['#ef4444', '#10b981', '#f59e0b']
                 ))
                 fig.update_layout(height=200, showlegend=False, margin=dict(t=20, b=20))
-                st.plotly_chart(fig, ))
+                st.plotly_chart(fig)
     
     with ai_tabs[1]:
         st.markdown("#### 💬 Ask Your Questions")
@@ -3566,28 +3562,28 @@ def display_ai_assistant():
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("What are my top cost-saving opportunities?", )):
+            if st.button("What are my top cost-saving opportunities?"):
                 response = analyze_cost_savings(df)
                 st.session_state.chat_history.append(("What are my top cost-saving opportunities?", response))
                 
-            if st.button("Which carriers are underperforming?", )):
+            if st.button("Which carriers are underperforming?"):
                 response = analyze_carrier_performance(df)
                 st.session_state.chat_history.append(("Which carriers are underperforming?", response))
                 
-            if st.button("What lanes should I consolidate?", )):
+            if st.button("What lanes should I consolidate?"):
                 response = analyze_consolidation_opportunities(df)
                 st.session_state.chat_history.append(("What lanes should I consolidate?", response))
         
         with col2:
-            if st.button("How can I reduce transit times?", )):
+            if st.button("How can I reduce transit times?"):
                 response = analyze_transit_optimization(df)
                 st.session_state.chat_history.append(("How can I reduce transit times?", response))
                 
-            if st.button("What's my spend trend?", )):
+            if st.button("What's my spend trend?"):
                 response = analyze_spend_trend(df)
                 st.session_state.chat_history.append(("What's my spend trend?", response))
                 
-            if st.button("Which modes should I optimize?", )):
+            if st.button("Which modes should I optimize?"):
                 response = analyze_mode_optimization(df)
                 st.session_state.chat_history.append(("Which modes should I optimize?", response))
         
@@ -4062,7 +4058,7 @@ with st.sidebar:
         if new_files:
             st.info(f"📁 {len(new_files)} new files detected")
             
-            if st.button("⚡ Process All Files", type="primary", )):
+            if st.button("⚡ Process All Files", type="primary"):
                 with st.spinner(f"Processing {len(new_files)} files..."):
                     processed = FastFileProcessor.process_files_batch(new_files)
                     st.session_state.data_cache.update(processed)
